@@ -9,6 +9,8 @@ __pycache__/
 venv/
 env/
 AI/
+.tools/
+.tools-cache/
 
 raw/
 archive/
