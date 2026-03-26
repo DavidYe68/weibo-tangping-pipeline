@@ -12,7 +12,6 @@ import pandas as pd
 
 TIME_CANDIDATES = ["发布时间", "created_at", "publish_time", "timestamp"]
 KEYWORD_CANDIDATES = ["keyword", "hit_keyword", "query_keyword"]
-ID_CANDIDATES = ["id", "mid"]
 TEXT_CANDIDATES = [
     "cleaned_text",
     "cleaned_text_with_emoji",
@@ -27,19 +26,6 @@ TEXT_CANDIDATES = [
     "description",
     "title",
 ]
-NON_TEXT_FALLBACK_EXCLUDE = {
-    *TIME_CANDIDATES,
-    *KEYWORD_CANDIDATES,
-    *ID_CANDIDATES,
-    "话题",
-    "转发数",
-    "评论数",
-    "点赞数",
-    "ip",
-    "source_file",
-}
-
-
 def emit_progress(message: str) -> None:
     print(f"[sample] {message}", file=sys.stderr, flush=True)
 
@@ -56,7 +42,7 @@ def parse_args() -> argparse.Namespace:
         "--k_min",
         type=int,
         default=20,
-        help="Minimum stratum population to guarantee at least one sample",
+        help="Minimum stratum population to guarantee at least one sample; 0 disables the guarantee",
     )
     parser.add_argument("--text_col", default=None, help="Optional forced text column name")
     parser.add_argument(
@@ -99,45 +85,9 @@ def pick_text_col(df: pd.DataFrame, forced: Optional[str]) -> str:
         if col in df.columns:
             return col
 
-    object_like_cols = [
-        c
-        for c in df.columns
-        if (pd.api.types.is_string_dtype(df[c]) or pd.api.types.is_object_dtype(df[c]))
-        and c not in NON_TEXT_FALLBACK_EXCLUDE
-    ]
-    if not object_like_cols:
-        object_like_cols = [
-            c
-            for c in df.columns
-            if pd.api.types.is_string_dtype(df[c]) or pd.api.types.is_object_dtype(df[c])
-        ]
-    if not object_like_cols:
-        raise ValueError(
-            "Cannot detect text column automatically. Please provide --text_col explicitly."
-        )
-
-    non_empty_counts = {}
-    for c in object_like_cols:
-        s = df[c].astype("string")
-        cnt = ((s.notna()) & (s.str.strip() != "")).sum()
-        non_empty_counts[c] = int(cnt)
-
-    chosen = max(non_empty_counts, key=non_empty_counts.get)
-    if non_empty_counts[chosen] == 0:
-        raise ValueError(
-            "Detected candidate text columns but all values are empty. Please provide --text_col."
-        )
-    return chosen
-
-
-def deduplicate(df: pd.DataFrame, text_col: str) -> Tuple[pd.DataFrame, str]:
-    for id_col in ID_CANDIDATES:
-        if id_col in df.columns:
-            deduped = df.drop_duplicates(subset=[id_col], keep="first").reset_index(drop=True)
-            return deduped, id_col
-
-    deduped = df.drop_duplicates(subset=[text_col], keep="first").reset_index(drop=True)
-    return deduped, text_col
+    raise ValueError(
+        "Cannot detect text column automatically. Please provide --text_col explicitly."
+    )
 
 
 def detect_month_series(df: pd.DataFrame) -> Tuple[Optional[pd.Series], Optional[str]]:
@@ -197,7 +147,7 @@ def allocate_samples(
         for idx in frac.index[:remainder]:
             alloc.loc[idx] += 1
 
-    eligible_min1 = counts >= k_min
+    eligible_min1 = counts >= k_min if k_min > 0 else pd.Series(False, index=counts.index)
     alloc = alloc.copy()
     alloc.loc[(eligible_min1) & (alloc == 0)] = 1
 
@@ -239,7 +189,7 @@ def allocate_samples(
         if remove != 0:
             raise RuntimeError(
                 "Failed to reduce allocation to target n under k_min constraints. "
-                "Try lowering --k_min or --n."
+                "Try --k_min 0 to disable the guarantee, or increase --k_min / --n."
             )
 
     if int(alloc.sum()) != n:
@@ -303,16 +253,12 @@ def main() -> None:
         emit_progress("detect text column")
         text_col = pick_text_col(df_raw, args.text_col)
 
-        emit_progress("deduplicate rows")
-        df_dedup, dedup_key = deduplicate(df_raw, text_col)
-        dedup_rows = int(len(df_dedup))
-
         emit_progress("build stratification dimensions")
-        month_series, month_col = detect_month_series(df_dedup)
-        keyword_series, keyword_col = detect_keyword_series(df_dedup)
-        len_bin_series, lengths = build_len_bin(df_dedup[text_col])
+        month_series, month_col = detect_month_series(df_raw)
+        keyword_series, keyword_col = detect_keyword_series(df_raw)
+        len_bin_series, lengths = build_len_bin(df_raw[text_col])
 
-        work = df_dedup.copy()
+        work = df_raw.copy()
         work["__month"] = month_series if month_series is not None else "NA"
         work["__keyword"] = keyword_series if keyword_series is not None else "NA"
         work["__len_bin"] = len_bin_series
@@ -344,7 +290,7 @@ def main() -> None:
                 f"Final sampled size mismatch: expected {args.n}, got {len(sampled)}"
             )
 
-        output_df = sampled[df_dedup.columns].copy()
+        output_df = sampled[df_raw.columns].copy()
 
         ensure_parent_dir(args.output)
         emit_progress(f"write sampled csv={args.output}")
@@ -369,9 +315,8 @@ def main() -> None:
         report = {
             "input_pattern": args.input,
             "output_csv": args.output,
-            "total_rows": raw_rows,
-            "deduped_rows": dedup_rows,
-            "dedup_key": dedup_key,
+            "input_rows": raw_rows,
+            "dedup_applied_in_sampling": False,
             "sample_n": int(args.n),
             "seed": int(args.seed),
             "k_min": int(args.k_min),

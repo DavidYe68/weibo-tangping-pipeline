@@ -308,6 +308,7 @@ python bert/01_stratified_sampling.py
 默认行为：
 
 - 从 `data/processed/text_dedup/*.parquet` 读取
+- 输入默认视为已经完成文本去重，不会在抽样阶段再次去重
 - 按月份、keyword、文本长度分层抽样
 - 输出 `data/bert/sample.csv`
 - 同时输出 `data/bert/sampling_report.json`
@@ -317,10 +318,17 @@ python bert/01_stratified_sampling.py
 ```bash
 python bert/01_stratified_sampling.py --n 6000
 python bert/01_stratified_sampling.py --seed 42
+python bert/01_stratified_sampling.py --k_min 0
 python bert/01_stratified_sampling.py --input "data/processed/text_dedup/*.parquet"
 python bert/01_stratified_sampling.py --output data/bert/sample.csv
 python bert/01_stratified_sampling.py --report_path data/bert/sampling_report.json
 ```
+
+说明：
+
+- 自动识别文本列时只会匹配内置候选列名；如果没有匹配到，会直接报错并要求显式传入 `--text_col`
+- `--k_min 0` 表示关闭“满足阈值的分层至少抽 1 条”的保底逻辑
+- 当 `--n` 很小而符合保底条件的分层太多时，可能无法满足“总样本数精确等于 n”，这时可以提高 `--k_min` 或增大 `--n`
 
 ### 8.2 bert/02_llm_label_local.py
 
