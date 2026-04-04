@@ -32,7 +32,7 @@ def parse_args() -> argparse.Namespace:
     )
     parser.add_argument("--text_col", default="cleaned_text", help="Text column name.")
     parser.add_argument("--sheet_name", default=None, help="Optional Excel sheet name.")
-    parser.add_argument("--max_length", type=int, default=128, help="Maximum token length.")
+    parser.add_argument("--max_length", type=int, default=256, help="Maximum token length.")
     parser.add_argument("--batch_size", type=int, default=16, help="Batch size.")
     parser.add_argument("--epochs", type=int, default=2, help="Training epochs for each label standard.")
     parser.add_argument("--learning_rate", type=float, default=2e-5, help="Learning rate.")
