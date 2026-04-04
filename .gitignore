@@ -8,6 +8,7 @@ __pycache__/
 .venv/
 venv/
 env/
+models/
 AI/
 .tools/
 .tools-cache/

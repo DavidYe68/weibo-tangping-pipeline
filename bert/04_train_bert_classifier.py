@@ -59,9 +59,9 @@ NON_TEXT_FALLBACK_EXCLUDE = {
     "tangping_related",
     "tangping_related_label",
 }
-LABEL_CANDIDATES = ["label", "tangping_related", "tangping_related_label"]
+LABEL_CANDIDATES = ["label", "tangping_related", "tangping_related_label", "broad", "strict"]
 POSITIVE_ALIASES = {"1", "1.0", "true", "yes", "y", "relevant", "positive", "相关", "有关"}
-NEGATIVE_ALIASES = {"0", "0.0", "false", "no", "n", "irrelevant", "negative", "无关", "不相关"}
+NEGATIVE_ALIASES = {"0", "0.0", "2", "2.0", "false", "no", "n", "irrelevant", "negative", "无关", "不相关"}
 
 
 def emit(message: str) -> None:
@@ -75,7 +75,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--input_csv",
         default="data/bert/labeled_binary.csv",
-        help="Training CSV path.",
+        help="Training CSV/XLSX path.",
     )
     parser.add_argument(
         "--output_dir",
@@ -89,6 +89,11 @@ def parse_args() -> argparse.Namespace:
     )
     parser.add_argument("--text_col", default=None, help="Optional text column name.")
     parser.add_argument("--label_col", default=None, help="Optional label column name.")
+    parser.add_argument(
+        "--sheet_name",
+        default=None,
+        help="Optional Excel sheet name. Uses the first sheet if omitted.",
+    )
     parser.add_argument("--max_length", type=int, default=128, help="Maximum token length.")
     parser.add_argument("--batch_size", type=int, default=16, help="Batch size.")
     parser.add_argument("--epochs", type=int, default=3, help="Training epochs.")
@@ -127,12 +132,21 @@ def normalize_label_value(value: Any) -> Optional[int]:
         return int(value)
 
     if isinstance(value, int):
-        if value in (0, 1):
-            return int(value)
+        if value in (0, 1, 2):
+            return 0 if value == 2 else int(value)
+
+    if isinstance(value, np.integer):
+        if int(value) in (0, 1, 2):
+            return 0 if int(value) == 2 else int(value)
 
     if isinstance(value, float):
-        if value in (0.0, 1.0):
-            return int(value)
+        if value in (0.0, 1.0, 2.0):
+            return 0 if value == 2.0 else int(value)
+
+    if isinstance(value, np.floating):
+        numeric_value = float(value)
+        if numeric_value in (0.0, 1.0, 2.0):
+            return 0 if numeric_value == 2.0 else int(numeric_value)
 
     text = str(value).strip()
     if not text:
@@ -146,6 +160,65 @@ def normalize_label_value(value: Any) -> Optional[int]:
     return None
 
 
+def make_unique_columns(columns: Sequence[Any]) -> List[str]:
+    counts: Dict[str, int] = {}
+    resolved: List[str] = []
+    for index, column in enumerate(columns):
+        base = str(column).strip() if pd.notna(column) else ""
+        if not base:
+            base = f"unnamed_{index}"
+        count = counts.get(base, 0)
+        counts[base] = count + 1
+        resolved.append(base if count == 0 else f"{base}__{count + 1}")
+    return resolved
+
+
+def row_contains_embedded_header(row: pd.Series) -> bool:
+    normalized = {
+        str(value).strip().lower()
+        for value in row.tolist()
+        if pd.notna(value) and str(value).strip()
+    }
+    expected_tokens = {
+        "id",
+        "cleaned_text",
+        "cleaned_text_with_emoji",
+        "text_raw",
+        "broad",
+        "strict",
+        "label",
+        "tangping_related",
+        "tangping_related_label",
+        "类型",
+        "发布时间",
+        "话题",
+        "keyword",
+    }
+    return len(normalized & {token.lower() for token in expected_tokens}) >= 3
+
+
+def load_training_dataframe(input_path: Path, sheet_name: Optional[str]) -> pd.DataFrame:
+    suffix = input_path.suffix.lower()
+    if suffix == ".csv":
+        return pd.read_csv(input_path)
+
+    if suffix not in {".xlsx", ".xls"}:
+        raise ValueError(f"Unsupported training file format: {input_path.suffix}")
+
+    resolved_sheet_name: Any = 0 if sheet_name in (None, "") else sheet_name
+    df = pd.read_excel(input_path, sheet_name=resolved_sheet_name)
+    if isinstance(df, dict):
+        first_sheet_name = next(iter(df))
+        df = df[first_sheet_name]
+    df.columns = make_unique_columns(df.columns)
+
+    if not df.empty and row_contains_embedded_header(df.iloc[0]):
+        header = make_unique_columns(df.iloc[0].tolist())
+        df = df.iloc[1:].copy()
+        df.columns = header
+    return df.reset_index(drop=True)
+
+
 def set_seed(seed: int) -> None:
     random.seed(seed)
     np.random.seed(seed)
@@ -157,7 +230,7 @@ def set_seed(seed: int) -> None:
 def detect_text_column(df: pd.DataFrame, forced: Optional[str]) -> str:
     if forced:
         if forced not in df.columns:
-            raise ValueError(f"Text column '{forced}' not found in CSV.")
+            raise ValueError(f"Text column '{forced}' not found in dataset.")
         return forced
 
     for column in TEXT_CANDIDATES:
@@ -187,7 +260,7 @@ def detect_text_column(df: pd.DataFrame, forced: Optional[str]) -> str:
 def detect_label_column(df: pd.DataFrame, forced: Optional[str]) -> str:
     if forced:
         if forced not in df.columns:
-            raise ValueError(f"Label column '{forced}' not found in CSV.")
+            raise ValueError(f"Label column '{forced}' not found in dataset.")
         return forced
 
     best_col = None
@@ -401,6 +474,11 @@ def save_predictions(
     result.to_csv(output_path, index=False, encoding="utf-8-sig")
 
 
+def save_split(df: pd.DataFrame, output_path: Path) -> None:
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    df.to_csv(output_path, index=False, encoding="utf-8-sig")
+
+
 def main() -> None:
     args = parse_args()
     set_seed(args.seed)
@@ -414,12 +492,12 @@ def main() -> None:
     test_predictions_path = output_dir / "test_predictions.csv"
 
     if not input_csv.exists():
-        raise FileNotFoundError(f"Training CSV not found: {input_csv}")
+        raise FileNotFoundError(f"Training dataset not found: {input_csv}")
 
     emit(f"Loading training data from {input_csv}")
-    df = pd.read_csv(input_csv)
+    df = load_training_dataframe(input_csv, args.sheet_name)
     if df.empty:
-        raise ValueError("Training CSV is empty.")
+        raise ValueError("Training dataset is empty.")
 
     text_col = detect_text_column(df, args.text_col)
     source_label_col = detect_label_column(df, args.label_col)
@@ -447,6 +525,9 @@ def main() -> None:
     )
 
     output_dir.mkdir(parents=True, exist_ok=True)
+    save_split(train_df, output_dir / "train_split.csv")
+    save_split(val_df, output_dir / "val_split.csv")
+    save_split(test_df, output_dir / "test_split.csv")
 
     emit(f"Loading tokenizer and model from {args.model_name_or_path}")
     tokenizer = AutoTokenizer.from_pretrained(
@@ -602,6 +683,7 @@ def main() -> None:
             "output_dir": str(output_dir.resolve()),
             "text_col": text_col,
             "label_col": source_label_col,
+            "sheet_name": args.sheet_name,
             "max_length": max_length,
             "batch_size": args.batch_size,
             "epochs": args.epochs,

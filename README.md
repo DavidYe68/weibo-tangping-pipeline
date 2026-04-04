@@ -47,6 +47,29 @@ python main.py export-csv merged
 python main.py export-csv text
 ```
 
+## 直接试训 sample_6000 标注集
+
+如果你已经把标注文件放在 `data/bert/sample_6000_labeled.xlsx`，可以直接分别训练 `broad` 和 `strict` 两套 BERT：
+
+```bash
+python3 bert/06_train_sample_6000_dual.py --local_files_only
+```
+
+输出目录默认是：
+
+- `bert/artifacts/sample_6000/broad/`
+- `bert/artifacts/sample_6000/strict/`
+
+每套都会产出：
+
+- `train_split.csv`
+- `val_split.csv`
+- `test_split.csv`
+- `metrics.json`
+- `training_history.json`
+- `test_predictions.csv`
+- `best_model/`
+
 ## Windows + NVIDIA 4060
 
 如果你准备在另一台 Windows 机器上继续运行，先看 [`WINDOWS_SETUP.md`](WINDOWS_SETUP.md)。
