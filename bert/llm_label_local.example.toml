@@ -15,9 +15,8 @@ request_retries = 2
 retry_backoff_sec = 3.0
 
 [labeler]
-provider = "qwen_openai"
-base_url = "https://dashscope.aliyuncs.com/compatible-mode/v1"
-model = "qwen3.5-plus"
+provider = "ollama"
+model = "gpt-oss:20b"
 
 [fixer]
 provider = "ollama"

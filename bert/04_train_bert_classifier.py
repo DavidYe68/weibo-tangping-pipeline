@@ -90,6 +90,11 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--text_col", default=None, help="Optional text column name.")
     parser.add_argument("--label_col", default=None, help="Optional label column name.")
     parser.add_argument(
+        "--split_col",
+        default=None,
+        help="Optional split column with values train/val/test. If provided, skips random splitting.",
+    )
+    parser.add_argument(
         "--sheet_name",
         default=None,
         help="Optional Excel sheet name. Uses the first sheet if omitted.",
@@ -379,6 +384,48 @@ def create_data_splits(
     )
 
 
+def normalize_split_value(value: Any) -> Optional[str]:
+    if pd.isna(value):
+        return None
+
+    normalized = str(value).strip().lower()
+    if normalized in {"train", "training"}:
+        return "train"
+    if normalized in {"val", "valid", "validation", "dev"}:
+        return "val"
+    if normalized in {"test", "testing"}:
+        return "test"
+    return None
+
+
+def create_predefined_splits(df: pd.DataFrame, split_col: str) -> Tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]:
+    if split_col not in df.columns:
+        raise ValueError(f"Split column '{split_col}' not found in dataset.")
+
+    resolved = df[split_col].map(normalize_split_value)
+    invalid_mask = resolved.isna()
+    if invalid_mask.any():
+        invalid_values = (
+            pd.Series(df.loc[invalid_mask, split_col].astype("string").unique()).dropna().astype(str).tolist()
+        )
+        preview = ", ".join(invalid_values[:5]) if invalid_values else "<empty>"
+        raise ValueError(
+            f"Split column '{split_col}' contains unsupported values. "
+            f"Expected train/val/test, got: {preview}"
+        )
+
+    working = df.copy()
+    working["__resolved_split"] = resolved
+    train_df = working[working["__resolved_split"] == "train"].drop(columns=["__resolved_split"]).reset_index(drop=True)
+    val_df = working[working["__resolved_split"] == "val"].drop(columns=["__resolved_split"]).reset_index(drop=True)
+    test_df = working[working["__resolved_split"] == "test"].drop(columns=["__resolved_split"]).reset_index(drop=True)
+
+    if train_df.empty or val_df.empty or test_df.empty:
+        raise ValueError("Predefined splits must all contain at least one row for train/val/test.")
+
+    return train_df, val_df, test_df
+
+
 def iterate_loader(loader: DataLoader, description: str) -> Any:
     if tqdm is None:
         return loader
@@ -445,33 +492,61 @@ def save_json(path: Path, payload: Dict[str, Any]) -> None:
     path.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
 
 
-def save_predictions(
+def build_predictions_dataframe(
     df: pd.DataFrame,
     text_col: str,
+    label_col: str,
     probs: np.ndarray,
     preds: np.ndarray,
-    output_path: Path,
-) -> None:
-    output_path.parent.mkdir(parents=True, exist_ok=True)
+) -> pd.DataFrame:
     result = df.copy()
+    result["label_standard"] = label_col
     result["gold_label"] = result["label"].astype(int)
+    result["gold_label_text"] = np.where(result["gold_label"] == 1, "相关", "无关")
     result["pred_label"] = preds.astype(int)
     result["pred_label_text"] = np.where(result["pred_label"] == 1, "相关", "无关")
     result["pred_prob_1"] = probs.astype(float)
     result["pred_prob_0"] = 1.0 - result["pred_prob_1"]
+    result["pred_confidence"] = np.maximum(result["pred_prob_1"], result["pred_prob_0"])
+    result["is_error"] = result["gold_label"] != result["pred_label"]
+    result["error_type"] = np.where(
+        result["is_error"],
+        np.where(result["gold_label"] == 1, "FN", "FP"),
+        "",
+    )
     ordered_columns = [
+        "label_standard",
+        "__dual_row_id",
+        "__dual_split",
         "id",
         text_col,
         "gold_label",
+        "gold_label_text",
         "pred_label",
         "pred_label_text",
         "pred_prob_1",
         "pred_prob_0",
+        "pred_confidence",
+        "is_error",
+        "error_type",
     ]
     existing_columns = [column for column in ordered_columns if column in result.columns]
     extra_columns = [column for column in result.columns if column not in existing_columns]
     result = result[existing_columns + extra_columns]
+    return result
+
+
+def save_predictions(result: pd.DataFrame, output_path: Path) -> None:
+    output_path.parent.mkdir(parents=True, exist_ok=True)
     result.to_csv(output_path, index=False, encoding="utf-8-sig")
+
+
+def save_misclassified(result: pd.DataFrame, output_path: Path) -> None:
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    errors = result[result["is_error"]].copy()
+    if not errors.empty and "pred_confidence" in errors.columns:
+        errors = errors.sort_values(by="pred_confidence", ascending=False).reset_index(drop=True)
+    errors.to_csv(output_path, index=False, encoding="utf-8-sig")
 
 
 def save_split(df: pd.DataFrame, output_path: Path) -> None:
@@ -490,6 +565,7 @@ def main() -> None:
     metrics_path = output_dir / "metrics.json"
     config_path = output_dir / "train_config.json"
     test_predictions_path = output_dir / "test_predictions.csv"
+    test_misclassified_path = output_dir / "test_misclassified.csv"
 
     if not input_csv.exists():
         raise FileNotFoundError(f"Training dataset not found: {input_csv}")
@@ -516,13 +592,20 @@ def main() -> None:
         if label_counts.get(class_id, 0) < 2:
             raise ValueError("Each class needs at least 2 rows for stratified train/val/test splits.")
 
-    train_df, val_df, test_df = create_data_splits(
-        df=df,
-        label_col="label",
-        val_size=args.val_size,
-        test_size=args.test_size,
-        seed=args.seed,
-    )
+    if args.split_col:
+        train_df, val_df, test_df = create_predefined_splits(df=df, split_col=args.split_col)
+    else:
+        train_df, val_df, test_df = create_data_splits(
+            df=df,
+            label_col="label",
+            val_size=args.val_size,
+            test_size=args.test_size,
+            seed=args.seed,
+        )
+
+    train_labels = set(train_df["label"].astype(int).unique().tolist())
+    if train_labels != {0, 1}:
+        raise ValueError("Training split must contain both positive and negative samples.")
 
     output_dir.mkdir(parents=True, exist_ok=True)
     save_split(train_df, output_dir / "train_split.csv")
@@ -660,6 +743,7 @@ def main() -> None:
         "positive_threshold": args.positive_threshold,
         "seed": args.seed,
         "device": str(device),
+        "split_col": args.split_col,
         "split_sizes": {
             "train": int(len(train_df)),
             "val": int(len(val_df)),
@@ -694,19 +778,23 @@ def main() -> None:
             "seed": args.seed,
             "device": str(device),
             "local_files_only": bool(args.local_files_only),
+            "split_col": args.split_col,
         },
     )
-    save_predictions(
+    test_predictions = build_predictions_dataframe(
         df=test_df,
         text_col=text_col,
+        label_col=source_label_col,
         probs=test_probs,
         preds=test_preds,
-        output_path=test_predictions_path,
     )
+    save_predictions(test_predictions, test_predictions_path)
+    save_misclassified(test_predictions, test_misclassified_path)
 
     emit(f"Best model saved to {best_model_dir}")
     emit(f"Metrics saved to {metrics_path}")
     emit(f"Test predictions saved to {test_predictions_path}")
+    emit(f"Test misclassified rows saved to {test_misclassified_path}")
 
 
 if __name__ == "__main__":

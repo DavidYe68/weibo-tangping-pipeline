@@ -59,6 +59,9 @@ python3 bert/06_train_sample_6000_dual.py --local_files_only
 
 - `bert/artifacts/sample_6000/broad/`
 - `bert/artifacts/sample_6000/strict/`
+- `bert/artifacts/sample_6000/shared_split_dataset.csv`
+- `bert/artifacts/sample_6000/test_predictions_side_by_side.csv`
+- `bert/artifacts/sample_6000/test_misclassified_side_by_side.csv`
 
 每套都会产出：
 
@@ -68,7 +71,13 @@ python3 bert/06_train_sample_6000_dual.py --local_files_only
 - `metrics.json`
 - `training_history.json`
 - `test_predictions.csv`
+- `test_misclassified.csv`
 - `best_model/`
+
+其中基目录下额外会产出两类方便排查的问题清单：
+
+- `test_predictions_side_by_side.csv`：同一批测试样本里 `broad` / `strict` 的预测结果横向对齐
+- `test_misclassified_side_by_side.csv`：只保留测试集里至少有一边预测错误的样本
 
 ## Windows + NVIDIA 4060
 
