@@ -23,7 +23,7 @@ from lib.text_modeling import TextLabelDataset, build_label_collate_fn, move_bat
 class TrainClassifierConfig:
     input_csv: str = "bert/data/labeled_binary.csv"
     output_dir: str = "bert/artifacts/tangping_bert"
-    model_name_or_path: str = "bert-base-chinese"
+    model_name_or_path: str = "models/huggingface/chinese-roberta-wwm-ext"
     text_col: Optional[str] = None
     label_col: Optional[str] = None
     split_col: Optional[str] = None
@@ -411,4 +411,3 @@ def run_training(
         "test_predictions_path": str(test_predictions_path.resolve()),
         "test_misclassified_path": str(test_misclassified_path.resolve()),
     }
-
