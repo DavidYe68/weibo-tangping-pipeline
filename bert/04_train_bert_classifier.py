@@ -56,7 +56,7 @@ def parse_args() -> argparse.Namespace:
     )
     parser.add_argument(
         "--model_name_or_path",
-        default="models/huggingface/chinese-roberta-wwm-ext",
+        default="hfl/chinese-roberta-wwm-ext",
         help="HF model name or local path for the base encoder.",
     )
     parser.add_argument("--text_col", default=None, help="Optional text column name.")
