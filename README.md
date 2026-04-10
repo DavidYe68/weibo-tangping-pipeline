@@ -8,6 +8,7 @@
 - 数据流水线：`scripts/pipeline/`
 - 抽样与标注：`bert/01_*`、`bert/02_*`、`bert/03_*`
 - BERT 训练与预测：`bert/04_*`、`bert/05_*`
+- BERT 公共模块：`bert/lib/`
 - 依赖清单：`requirements.txt`
 
 ## 仓库不包含什么
@@ -52,7 +53,7 @@ python main.py export-csv text
 如果你已经把标注文件放在 `bert/data/sample_6000_labeled.xlsx`，可以直接分别训练 `broad` 和 `strict` 两套 BERT：
 
 ```bash
-python3 bert/06_train_sample_6000_dual.py --local_files_only
+python3 bert/05_train_sample_6000_dual.py --local_files_only
 ```
 
 输出目录默认是：
@@ -74,10 +75,21 @@ python3 bert/06_train_sample_6000_dual.py --local_files_only
 - `test_misclassified.csv`
 - `best_model/`
 
-其中基目录下额外会产出两类方便排查的问题清单：
+其中基目录下额外会产出一组方便排查的问题清单：
 
 - `test_predictions_side_by_side.csv`：同一批测试样本里 `broad` / `strict` 的预测结果横向对齐
 - `test_misclassified_side_by_side.csv`：只保留测试集里至少有一边预测错误的样本
+- `inspect/summary.md`：一眼看“先查哪类问题、先开哪个文件”
+- `inspect/label_diagnosis.csv`：按标签给出当前更像 `FP` 问题还是 `FN` 问题
+- `inspect/metrics_overview.csv`：把关键 val/test 指标压平成一张表
+- `inspect/error_summary.csv`：按 `FP/FN` 汇总错误数量
+- `inspect/side_by_side_error_summary.csv`：看两套标准是一起错，还是只有一边错
+- `inspect/top_fp_*.csv` / `inspect/top_fn_*.csv`：按问题类型拆开的重点错例，适合直接人工排查
+
+补充说明：
+
+- `bert/04_train_bert_classifier.py`、`bert/05_train_sample_6000_dual.py`、`bert/06_eval_by_source.py`、`bert/07_predict_bert_classifier.py` 现在主要负责 CLI 参数和流程编排。
+- 共享的数据读取、标签归一化、切分、训练与预测实现已经统一抽到 `bert/lib/`，后续加新的评估协议时不需要再在多个脚本里复制逻辑。
 
 ## Windows + NVIDIA 4060
 

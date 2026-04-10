@@ -10,13 +10,19 @@
 6. 针对 `sample_6000_labeled.xlsx` 同时训练 `broad` / `strict` 两套标准。
 7. 合并多人或多批次的 Excel 标注结果。
 
+当前实现里，`03` / `04` / `05` / `06` / `07` 这些脚本已经收敛成“薄 CLI 入口”，公共逻辑统一放在 `bert/lib/` 下，便于后续继续加新的评估协议或实验编排，而不用在多个脚本里重复改同一段逻辑。
+
 如果你只想快速跑通一遍，建议按下面顺序使用：
 
-`01_stratified_sampling.py` -> `02_llm_label_local.py` -> `03_normalize_labels.py` -> `04_train_bert_classifier.py` -> `05_predict_bert_classifier.py`
+`01_stratified_sampling.py` -> `02_llm_label_local.py` -> `03_normalize_labels.py` -> `04_train_bert_classifier.py` -> `05_train_sample_6000_dual.py` / `06_eval_by_source.py` -> `07_predict_bert_classifier.py`
 
 如果你已经有人工标注好的 `sample_6000_labeled.xlsx`，则可以直接使用：
 
-`06_train_sample_6000_dual.py`
+`05_train_sample_6000_dual.py`
+
+如果你要按数据来源做外部评估，并保证 `sample_foxi_manuel_added.xlsx` 只参与训练、不进入验证或测试，则使用：
+
+`06_eval_by_source.py`
 
 ## 目录结构
 
@@ -26,8 +32,18 @@ bert/
 ├── 02_llm_label_local.py
 ├── 03_normalize_labels.py
 ├── 04_train_bert_classifier.py
-├── 05_predict_bert_classifier.py
-├── 06_train_sample_6000_dual.py
+├── 05_train_sample_6000_dual.py
+├── 06_eval_by_source.py
+├── 07_predict_bert_classifier.py
+├── lib/
+│   ├── data_utils.py
+│   ├── io_utils.py
+│   ├── labels.py
+│   ├── prediction.py
+│   ├── runtime.py
+│   ├── splits.py
+│   ├── text_modeling.py
+│   └── training.py
 ├── llm_label_local.example.toml
 ├── data/
 │   ├── sample_6000.csv
@@ -60,7 +76,7 @@ python3 -m pip install pandas numpy scikit-learn requests openpyxl pyarrow tqdm 
 说明：
 
 - `02_llm_label_local.py` 使用了 `tomllib`，因此更适合 Python 3.11+。
-- `04` 和 `05` 默认会从 Hugging Face 加载模型；如果你是离线环境，需要提前把模型下载到本地并配合 `--local_files_only` 使用。
+- `04`、`05`、`06` 和 `07` 默认会从 Hugging Face 加载模型；如果你是离线环境，需要提前把模型下载到本地并配合 `--local_files_only` 使用。
 - 训练和预测支持 `cpu` / `cuda` / `mps`，默认 `--device auto`。
 
 ## 数据与产物说明
@@ -108,6 +124,38 @@ python3 -m pip install pandas numpy scikit-learn requests openpyxl pyarrow tqdm 
 - `test_misclassified.csv`
 - `summary.json`
 - `test_predictions_side_by_side.csv`
+- `inspect/summary.md`
+- `inspect/label_diagnosis.csv`
+- `inspect/metrics_overview.csv`
+- `inspect/error_summary.csv`
+- `inspect/side_by_side_error_summary.csv`
+- `inspect/side_by_side_errors_review.csv`
+- `inspect/top_errors_broad.csv`
+- `inspect/top_fp_broad.csv`
+- `inspect/top_fn_broad.csv`
+- `inspect/top_errors_strict.csv`
+- `inspect/top_fp_strict.csv`
+- `inspect/top_fn_strict.csv`
+
+### `lib/` 下的公共模块
+
+- `data_utils.py`
+  - 统一处理 CSV/XLSX 读取、嵌入式表头、文本列自动识别。
+
+- `labels.py`
+  - 统一处理标签归一化和标签列自动识别。
+
+- `splits.py`
+  - 统一处理单标签分层切分、预定义切分、双标签共享切分。
+
+- `training.py`
+  - 负责单模型训练、验证、测试、保存指标与预测结果。
+
+- `prediction.py`
+  - 负责批量 parquet 推理和预测汇总。
+
+- `runtime.py` / `text_modeling.py` / `io_utils.py`
+  - 放训练和预测共用的设备解析、DataLoader 拼装、JSON/路径写出等基础能力。
 
 ## 工作流概览
 
@@ -117,18 +165,26 @@ python3 -m pip install pandas numpy scikit-learn requests openpyxl pyarrow tqdm 
 2. 用 `02_llm_label_local.py` 对样本做 LLM 初筛。
 3. 用 `03_normalize_labels.py` 统一标签格式。
 4. 用 `04_train_bert_classifier.py` 训练分类器。
-5. 用 `05_predict_bert_classifier.py` 对整批 parquet 回灌预测。
+5. 如果是 `sample_6000_labeled.xlsx` 这类双标签训练，优先用 `05_train_sample_6000_dual.py`。
+6. 如果要按来源做外部评估，使用 `06_eval_by_source.py`。
+7. 最后用 `07_predict_bert_classifier.py` 对整批 parquet 回灌预测。
 
 ### 方案 B：直接用已整理的 Excel 训练两套标准
 
 1. 准备 `sample_6000_labeled.xlsx`，确保有 `broad` 和 `strict` 两列。
-2. 使用 `06_train_sample_6000_dual.py`。
-3. 查看 `bert/artifacts/<输出目录>/summary.json` 和 side-by-side 结果。
+2. 使用 `05_train_sample_6000_dual.py`。
+3. 优先查看 `bert/artifacts/<输出目录>/inspect/summary.md`、`label_diagnosis.csv` 和 side-by-side 结果。
 
-### 方案 C：合并多人标注的 Excel
+### 方案 C：按来源做外部评估
+
+1. 准备 `sample_1.xlsx`、`sample_2.xlsx`、`sample_foxi.xlsx`。
+2. 如需把 `sample_foxi_manuel_added.xlsx` 仅作为训练增强，也一并准备。
+3. 使用 `06_eval_by_source.py`，它会自动保证 manual 样本只进入 train，不进入 val/test。
+
+### 方案 D：合并多人标注的 Excel
 
 1. 用 `scripts/merge_xlsx_annotations.py` 把多个 xlsx 合并成一个主表。
-2. 再用 `06` 或 `04` 做训练。
+2. 再用 `05` 或 `04` 做训练。
 
 ## 各脚本详细说明
 
@@ -628,88 +684,15 @@ python3 bert/04_train_bert_classifier.py \
 - 每个类别至少需要 2 条样本，否则没法做分层切分。
 - 如果使用 `--split_col`，该列只能包含 `train`、`val`、`test` 或其常见别名。
 
-## 5. `05_predict_bert_classifier.py`
+## 5. `05_train_sample_6000_dual.py`
 
-文件：[`05_predict_bert_classifier.py`](/Users/apple/Local/fdurop/code/result/bert/05_predict_bert_classifier.py)
-
-### 作用
-
-用 `04` 训练好的模型，对一批 parquet 文件进行预测，并把预测结果写回新的 parquet 文件。
-
-### 默认输入输出
-
-- 模型目录：`bert/artifacts/tangping_bert/best_model`
-- 输入：`data/processed/text_dedup/*.parquet`
-- 输出目录：`data/processed/text_dedup_predicted`
-
-### 主要参数
-
-- `--model_dir`
-  - 精调后模型目录，必须包含模型和 tokenizer。
-- `--input_pattern`
-  - parquet glob。
-- `--output_dir`
-  - 预测后 parquet 保存目录。
-- `--text_col`
-  - 强制指定文本列。
-- `--batch_size`
-- `--max_length`
-- `--positive_threshold`
-- `--device`
-- `--local_files_only`
-- `--only_positive`
-  - 只保留预测为正类的行。
-
-### 示例 1：批量预测并保留全部行
-
-```bash
-python3 bert/05_predict_bert_classifier.py \
-  --model_dir "bert/artifacts/tangping_bert/best_model" \
-  --input_pattern "data/processed/text_dedup/*.parquet" \
-  --output_dir "data/processed/text_dedup_predicted"
-```
-
-### 示例 2：只导出预测为相关的微博
-
-```bash
-python3 bert/05_predict_bert_classifier.py \
-  --model_dir "bert/artifacts/tangping_bert/best_model" \
-  --input_pattern "data/processed/text_dedup/*.parquet" \
-  --output_dir "data/processed/text_dedup_positive" \
-  --only_positive
-```
-
-### 输出内容
-
-每个输出 parquet 会在原始列基础上新增：
-
-- `pred_label`
-- `pred_label_text`
-- `pred_prob_1`
-- `pred_prob_0`
-- `model_dir`
-
-同时在输出目录下生成：
-
-- `prediction_summary.json`
-
-该 summary 会记录：
-
-- 输入 glob
-- 模型目录
-- 每个文件的样本数
-- 各文件正负类数量
-- 汇总 totals
-
-## 6. `06_train_sample_6000_dual.py`
-
-文件：[`06_train_sample_6000_dual.py`](/Users/apple/Local/fdurop/code/result/bert/06_train_sample_6000_dual.py)
+文件：[`05_train_sample_6000_dual.py`](/Users/apple/Local/fdurop/code/result/bert/05_train_sample_6000_dual.py)
 
 ### 作用
 
 专门针对 `sample_6000_labeled.xlsx` 这类同时包含 `broad` 和 `strict` 两套标签标准的数据，分别训练两套模型，并生成对照报告。
 
-它本质上是 `04_train_bert_classifier.py` 的封装器，额外做了三件事：
+它本质上是 `04_train_bert_classifier.py` 的编排器，额外做了三件事：
 
 1. 从同一份数据中生成共享 train / val / test 切分。
 2. 分别训练 `broad` 和 `strict` 两个模型。
@@ -731,8 +714,6 @@ python3 bert/05_predict_bert_classifier.py \
 3. 只按 `strict_norm` 分层
 4. 完全随机切分
 
-因此即使标签分布不理想，它也会自动回退。
-
 ### 主要参数
 
 - `--input_path`
@@ -740,8 +721,8 @@ python3 bert/05_predict_bert_classifier.py \
 - `--model_name_or_path`
 - `--text_col`
 - `--sheet_name`
-- `--max_length`
 - `--batch_size`
+- `--max_length`
 - `--epochs`
 - `--learning_rate`
 - `--weight_decay`
@@ -750,14 +731,13 @@ python3 bert/05_predict_bert_classifier.py \
 - `--val_size`
 - `--test_size`
 - `--positive_threshold`
-- `--seed`
 - `--device`
 - `--local_files_only`
 
 ### 示例
 
 ```bash
-python3 bert/06_train_sample_6000_dual.py \
+python3 bert/05_train_sample_6000_dual.py \
   --input_path "bert/data/sample_6000_labeled.xlsx" \
   --base_output_dir "bert/artifacts/sample_6000" \
   --model_name_or_path "bert-base-chinese" \
@@ -787,6 +767,9 @@ python3 bert/06_train_sample_6000_dual.py \
 - `test_misclassified_side_by_side.csv`
   - 任一标准下错分的样本对照表。
 - `summary.json`
+ - `inspect/`
+   - 面向排查问题的精简产物目录。
+   - 推荐优先看这里，而不是先打开原始大表。
   - 总汇总报告。
 
 ### 适合什么时候用
@@ -795,7 +778,246 @@ python3 bert/06_train_sample_6000_dual.py \
 - 你希望对同一批样本横向比较两套标注标准训练出的模型。
 - 你需要快速定位“某条样本在 broad 下对，在 strict 下错”这类差异。
 
-## 7. `scripts/merge_xlsx_annotations.py`
+### 推荐先看哪些输出
+
+如果你的目标是“快速发现问题在哪”，推荐优先打开：
+
+- `inspect/summary.md`
+  - 直接告诉你先查哪类问题、先开哪个文件。
+- `inspect/label_diagnosis.csv`
+  - 先判断每个标签更像 `FP` 问题还是 `FN` 问题。
+- `inspect/metrics_overview.csv`
+  - 一眼看 `broad` / `strict` 在 val / test 上的核心指标。
+- `inspect/error_summary.csv`
+  - 先判断主要是 `FP` 多还是 `FN` 多。
+- `inspect/side_by_side_error_summary.csv`
+  - 看是两套标准一起错，还是只有一边错。
+- `inspect/side_by_side_errors_review.csv`
+  - 直接人工复核最值得看的错例集合。
+- `inspect/top_fp_broad.csv` / `inspect/top_fn_broad.csv`
+  - `broad` 的误报和漏报已经拆开，更适合直接定位问题。
+- `inspect/top_fp_strict.csv` / `inspect/top_fn_strict.csv`
+  - `strict` 同理。
+
+## 6. `06_eval_by_source.py`
+
+文件：[`06_eval_by_source.py`](/Users/apple/Local/fdurop/code/result/bert/06_eval_by_source.py)
+
+### 作用
+
+按数据来源做外部评估，并自动保证 `sample_foxi_manuel_added.xlsx` 只进入训练集，不进入验证或测试。
+
+默认会跑三组实验：
+
+1. `sample_1_test`
+2. `sample_2_test`
+3. `foxi_test`
+
+其中 `sample_foxi` 会先切出一部分真实 `foxi_test`，剩余部分和其他来源一起组成真实训练池；`manual` 样本只会在真实训练池完成 train/val 切分后追加到 `train`。
+
+如果你只想跑其中一组，可以用 `--experiments` 指定子集。
+
+### 默认输入输出
+
+- `sample_1`：`bert/data/sample_1.xlsx`
+- `sample_2`：`bert/data/sample_2.xlsx`
+- `foxi_real`：`bert/data/sample_foxi.xlsx`
+- `foxi_manual`：`bert/data/sample_foxi_manuel_added.xlsx`
+- 输出目录：`bert/artifacts/eval_by_source`
+
+### 主要参数
+
+- `--sample1_path`
+- `--sample2_path`
+- `--foxi_path`
+- `--manual_path`
+- `--base_output_dir`
+- `--model_name_or_path`
+- `--text_col`
+- `--sheet_name`
+- `--max_length`
+- `--batch_size`
+- `--epochs`
+- `--learning_rate`
+- `--weight_decay`
+- `--warmup_ratio`
+- `--max_grad_norm`
+- `--val_size`
+- `--foxi_test_size`
+- `--positive_threshold`
+- `--seed`
+- `--device`
+- `--local_files_only`
+- `--skip_manual`
+- `--experiments`
+
+### 示例
+
+```bash
+python3 bert/06_eval_by_source.py \
+  --base_output_dir "bert/artifacts/eval_by_source" \
+  --model_name_or_path "bert-base-chinese" \
+  --text_col "cleaned_text" \
+  --epochs 2 \
+  --batch_size 16
+```
+
+只跑 `foxi_test`，并且不使用 manual 增强：
+
+```bash
+python3 bert/06_eval_by_source.py \
+  --experiments foxi_test \
+  --skip_manual \
+  --base_output_dir "bert/artifacts/eval_by_source_foxi_nomanu" \
+  --model_name_or_path "bert-base-chinese" \
+  --text_col "cleaned_text" \
+  --epochs 2 \
+  --batch_size 16
+```
+
+### 输出目录结构
+
+运行后，`base_output_dir` 下通常会有：
+
+- `sample_1_test/`
+- `sample_2_test/`
+- `foxi_test/`
+- `summary.json`
+
+每个实验目录下又会包含：
+
+- `shared_split_dataset.csv`
+- `shared_split_manifest.json`
+- `broad/`
+- `strict/`
+- `test_predictions_combined.csv`
+- `test_misclassified_combined.csv`
+- `test_predictions_side_by_side.csv`
+- `test_misclassified_side_by_side.csv`
+- `summary.json`
+- `inspect/summary.md`
+- `inspect/label_diagnosis.csv`
+- `inspect/metrics_overview.csv`
+- `inspect/error_summary.csv`
+- `inspect/side_by_side_error_summary.csv`
+- `inspect/side_by_side_errors_review.csv`
+- `inspect/top_errors_broad.csv`
+- `inspect/top_errors_strict.csv`
+- `inspect/top_fp_broad.csv`
+- `inspect/top_fn_broad.csv`
+- `inspect/top_fp_strict.csv`
+- `inspect/top_fn_strict.csv`
+
+在 `base_output_dir` 根目录下还会额外生成：
+
+- `inspect/experiment_scorecard.csv`
+  - 把所有实验的 val/test 指标压成一张总表。
+- `inspect/experiment_scorecard.md`
+  - 同一份信息的便于快速浏览版本。
+- `inspect/experiment_triage.csv`
+  - 直接告诉你每个实验应该先查 `FP` 还是 `FN`。
+
+### 适合什么时候用
+
+- 你要比较模型在 `sample_1`、`sample_2`、真实 `foxi` 上分别的泛化情况。
+- 你需要把 `manual foxi` 只当训练增强，不能污染验证或测试。
+- 你希望同时保留 `broad` / `strict` 两套标准的对照结果。
+
+### 推荐先看哪些输出
+
+跑完 `06` 后，建议先看：
+
+- `inspect/experiment_triage.csv`
+  - 先决定每个实验先看哪类错例。
+- `inspect/experiment_scorecard.csv`
+  - 横向对比 `sample_1_test` / `sample_2_test` / `foxi_test`。
+- `<实验名>/inspect/summary.md`
+  - 进入单个实验后的最短阅读路径。
+- `<实验名>/inspect/label_diagnosis.csv`
+  - 判断 `broad` / `strict` 各自更像 `FP` 还是 `FN` 问题。
+- `<实验名>/inspect/metrics_overview.csv`
+  - 针对单个实验看 `broad` / `strict` 谁更稳。
+- `<实验名>/inspect/error_summary.csv`
+  - 看主要是 `FP` 多还是 `FN` 多。
+- `<实验名>/inspect/side_by_side_error_summary.csv`
+  - 看两套标准的分歧形态。
+- `<实验名>/inspect/top_fp_*.csv` / `<实验名>/inspect/top_fn_*.csv`
+  - 直接抽检最值得看的误报和漏报。
+
+## 7. `07_predict_bert_classifier.py`
+
+文件：[`07_predict_bert_classifier.py`](/Users/apple/Local/fdurop/code/result/bert/07_predict_bert_classifier.py)
+
+### 作用
+
+用 `04`、`05` 或 `06` 训练好的模型，对一批 parquet 文件进行预测，并把预测结果写回新的 parquet 文件。
+
+### 默认输入输出
+
+- 模型目录：`bert/artifacts/tangping_bert/best_model`
+- 输入：`data/processed/text_dedup/*.parquet`
+- 输出目录：`data/processed/text_dedup_predicted`
+
+### 主要参数
+
+- `--model_dir`
+  - 精调后模型目录，必须包含模型和 tokenizer。
+- `--input_pattern`
+  - parquet glob。
+- `--output_dir`
+  - 预测后 parquet 保存目录。
+- `--text_col`
+  - 强制指定文本列。
+- `--batch_size`
+- `--max_length`
+- `--positive_threshold`
+- `--device`
+- `--local_files_only`
+- `--only_positive`
+  - 只保留预测为正类的行。
+
+### 示例 1：批量预测并保留全部行
+
+```bash
+python3 bert/07_predict_bert_classifier.py \
+  --model_dir "bert/artifacts/tangping_bert/best_model" \
+  --input_pattern "data/processed/text_dedup/*.parquet" \
+  --output_dir "data/processed/text_dedup_predicted"
+```
+
+### 示例 2：只导出预测为相关的微博
+
+```bash
+python3 bert/07_predict_bert_classifier.py \
+  --model_dir "bert/artifacts/tangping_bert/best_model" \
+  --input_pattern "data/processed/text_dedup/*.parquet" \
+  --output_dir "data/processed/text_dedup_positive" \
+  --only_positive
+```
+
+### 输出内容
+
+每个输出 parquet 会在原始列基础上新增：
+
+- `pred_label`
+- `pred_label_text`
+- `pred_prob_1`
+- `pred_prob_0`
+- `model_dir`
+
+同时在输出目录下生成：
+
+- `prediction_summary.json`
+
+该 summary 会记录：
+
+- 输入 glob
+- 模型目录
+- 每个文件的样本数
+- 各文件正负类数量
+- 汇总 totals
+
+## 8. `scripts/merge_xlsx_annotations.py`
 
 文件：[`scripts/merge_xlsx_annotations.py`](/Users/apple/Local/fdurop/code/result/bert/scripts/merge_xlsx_annotations.py)
 
@@ -848,7 +1070,7 @@ python3 bert/scripts/merge_xlsx_annotations.py \
 - 多人并行标注后回收统一结果。
 - 一部分文件有双表头、一部分文件没有标准表头时做兼容合并。
 
-## 8. `llm_label_local.example.toml`
+## 9. `llm_label_local.example.toml`
 
 文件：[`llm_label_local.example.toml`](/Users/apple/Local/fdurop/code/result/bert/llm_label_local.example.toml)
 
@@ -910,12 +1132,23 @@ python3 bert/04_train_bert_classifier.py \
 ## 范例 2：直接用现成 Excel 训练 broad / strict
 
 ```bash
-python3 bert/06_train_sample_6000_dual.py \
+python3 bert/05_train_sample_6000_dual.py \
   --input_path "bert/data/sample_6000_labeled.xlsx" \
   --base_output_dir "bert/artifacts/sample_6000"
 ```
 
-## 范例 3：先合并人工标注，再做双标准训练
+## 范例 3：按来源做外部评估，并保证 manual 只进训练
+
+```bash
+python3 bert/06_eval_by_source.py \
+  --sample1_path "bert/data/sample_1.xlsx" \
+  --sample2_path "bert/data/sample_2.xlsx" \
+  --foxi_path "bert/data/sample_foxi.xlsx" \
+  --manual_path "bert/data/sample_foxi_manuel_added.xlsx" \
+  --base_output_dir "bert/artifacts/eval_by_source"
+```
+
+## 范例 4：先合并人工标注，再做双标准训练
 
 ```bash
 python3 bert/scripts/merge_xlsx_annotations.py \
@@ -925,7 +1158,7 @@ python3 bert/scripts/merge_xlsx_annotations.py \
   -o bert/data/sample_6000_labeled.xlsx \
   --report-json bert/data/sample_6000_labeled.merge_report.json
 
-python3 bert/06_train_sample_6000_dual.py \
+python3 bert/05_train_sample_6000_dual.py \
   --input_path "bert/data/sample_6000_labeled.xlsx" \
   --base_output_dir "bert/artifacts/sample_merge"
 ```
@@ -940,16 +1173,17 @@ python3 bert/06_train_sample_6000_dual.py \
 
 因为它支持断点续跑。如果输出文件已存在，而且行数和 `id` 能对上，脚本会自动跳过已完成样本。
 
-### 3. `04` 和 `06` 的区别是什么？
+### 3. `04`、`05` 和 `06` 的区别是什么？
 
 - `04` 是通用训练脚本，适用于单标签标准。
-- `06` 是双标准封装器，专门处理 `broad` / `strict` 两套标签，并生成对照结果。
+- `05` 是双标准训练编排器，专门处理 `broad` / `strict` 两套标签，并生成对照结果。
+- `06` 是按来源做外部评估的编排器，会额外保证 `manual foxi` 只进入训练集。
 
 ### 4. 什么时候用 `--local_files_only`？
 
 当模型和 tokenizer 已经在本地，或者你在离线环境运行时，就要加这个参数。
 
-### 5. `05_predict_bert_classifier.py` 为什么只支持 parquet？
+### 5. `07_predict_bert_classifier.py` 为什么只支持 parquet？
 
 因为它的定位是“批量回灌到处理后的语料库”，默认面向 `data/processed/text_dedup/*.parquet` 这类中间产物，而不是训练表。
 

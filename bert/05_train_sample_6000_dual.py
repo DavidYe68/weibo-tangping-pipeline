@@ -1,15 +1,18 @@
 #!/usr/bin/env python3
 import argparse
-import importlib.util
-import json
-import subprocess
 import sys
 from pathlib import Path
 from typing import Any, Dict, List
 
 import numpy as np
 import pandas as pd
-from sklearn.model_selection import train_test_split
+
+from lib.data_utils import detect_text_column, load_training_dataframe
+from lib.io_utils import save_json
+from lib.labels import normalize_label_value
+from lib.reporting import build_metrics_snapshot, write_dual_run_inspect_artifacts
+from lib.splits import create_shared_splits
+from lib.training import TrainClassifierConfig, run_training
 
 
 def emit(message: str) -> None:
@@ -67,131 +70,38 @@ def parse_args() -> argparse.Namespace:
     return parser.parse_args()
 
 
-def build_train_command(args: argparse.Namespace, label_col: str, output_dir: Path) -> List[str]:
-    script_path = Path(__file__).with_name("04_train_bert_classifier.py")
-    command = [
-        sys.executable,
-        str(script_path),
-        "--input_csv",
-        str(Path(args.input_path)),
-        "--output_dir",
-        str(output_dir),
-        "--model_name_or_path",
-        args.model_name_or_path,
-        "--text_col",
-        args.text_col,
-        "--label_col",
-        label_col,
-        "--max_length",
-        str(args.max_length),
-        "--batch_size",
-        str(args.batch_size),
-        "--epochs",
-        str(args.epochs),
-        "--learning_rate",
-        str(args.learning_rate),
-        "--weight_decay",
-        str(args.weight_decay),
-        "--warmup_ratio",
-        str(args.warmup_ratio),
-        "--max_grad_norm",
-        str(args.max_grad_norm),
-        "--val_size",
-        str(args.val_size),
-        "--test_size",
-        str(args.test_size),
-        "--positive_threshold",
-        str(args.positive_threshold),
-        "--seed",
-        str(args.seed),
-        "--device",
-        args.device,
-    ]
-    if args.sheet_name:
-        command.extend(["--sheet_name", args.sheet_name])
-    if args.local_files_only:
-        command.append("--local_files_only")
-    return command
-
-
-def load_train_module() -> Any:
-    script_path = Path(__file__).with_name("04_train_bert_classifier.py")
-    spec = importlib.util.spec_from_file_location("train_bert_classifier", script_path)
-    if spec is None or spec.loader is None:
-        raise RuntimeError(f"Could not load training module from {script_path}")
-    module = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(module)
-    return module
-
-
-def split_with_optional_stratify(
-    df: pd.DataFrame,
-    val_size: float,
-    test_size: float,
-    seed: int,
-    stratify_values: pd.Series | None,
-) -> Dict[str, pd.DataFrame]:
-    working = df.copy()
-    key_column = "__dual_split_key"
-    if stratify_values is not None:
-        working[key_column] = stratify_values.astype(str)
-
-    train_df, temp_df = train_test_split(
-        working,
-        test_size=val_size + test_size,
-        stratify=working[key_column] if stratify_values is not None else None,
-        random_state=seed,
+def build_train_config(args: argparse.Namespace, label_col: str, input_path: Path, output_dir: Path) -> TrainClassifierConfig:
+    return TrainClassifierConfig(
+        input_csv=str(input_path),
+        output_dir=str(output_dir),
+        model_name_or_path=args.model_name_or_path,
+        text_col=args.text_col,
+        label_col=label_col,
+        split_col="__dual_split",
+        sheet_name=args.sheet_name,
+        max_length=args.max_length,
+        batch_size=args.batch_size,
+        epochs=args.epochs,
+        learning_rate=args.learning_rate,
+        weight_decay=args.weight_decay,
+        warmup_ratio=args.warmup_ratio,
+        max_grad_norm=args.max_grad_norm,
+        val_size=args.val_size,
+        test_size=args.test_size,
+        positive_threshold=args.positive_threshold,
+        seed=args.seed,
+        device=args.device,
+        local_files_only=bool(args.local_files_only),
     )
-
-    relative_test_size = test_size / (val_size + test_size)
-    val_df, test_df = train_test_split(
-        temp_df,
-        test_size=relative_test_size,
-        stratify=temp_df[key_column] if stratify_values is not None else None,
-        random_state=seed,
-    )
-
-    frames = {
-        "train": train_df.reset_index(drop=True),
-        "val": val_df.reset_index(drop=True),
-        "test": test_df.reset_index(drop=True),
-    }
-    for name, frame in frames.items():
-        if key_column in frame.columns:
-            frames[name] = frame.drop(columns=[key_column])
-    return frames
-
-
-def create_shared_splits(df: pd.DataFrame, val_size: float, test_size: float, seed: int) -> tuple[Dict[str, pd.DataFrame], str]:
-    strategies = [
-        ("pair", df["broad_norm"].astype(str) + "_" + df["strict_norm"].astype(str)),
-        ("broad", df["broad_norm"]),
-        ("strict", df["strict_norm"]),
-        ("random", None),
-    ]
-
-    last_error: Exception | None = None
-    for strategy_name, stratify_values in strategies:
-        try:
-            frames = split_with_optional_stratify(df, val_size, test_size, seed, stratify_values)
-            return frames, strategy_name
-        except ValueError as exc:
-            last_error = exc
-            emit(f"Shared split fallback: strategy={strategy_name} unavailable ({exc})")
-
-    if last_error is not None:
-        raise last_error
-    raise RuntimeError("Failed to create shared splits.")
 
 
 def prepare_shared_dataset(args: argparse.Namespace, base_output_dir: Path) -> tuple[Path, Dict[str, Any]]:
-    train_module = load_train_module()
     input_path = Path(args.input_path)
-    df = train_module.load_training_dataframe(input_path, args.sheet_name)
+    df = load_training_dataframe(input_path, args.sheet_name)
     if df.empty:
         raise ValueError("Input dataset is empty.")
 
-    text_col = train_module.detect_text_column(df, args.text_col)
+    text_col = detect_text_column(df, args.text_col, source_name="dataset")
     for label_col in ("broad", "strict"):
         if label_col not in df.columns:
             raise ValueError(f"Required label column '{label_col}' not found in dataset.")
@@ -199,8 +109,8 @@ def prepare_shared_dataset(args: argparse.Namespace, base_output_dir: Path) -> t
     working = df.copy()
     working["__dual_row_id"] = np.arange(len(working), dtype=np.int64)
     working[text_col] = working[text_col].fillna("").astype(str).str.strip()
-    working["broad_norm"] = working["broad"].map(train_module.normalize_label_value)
-    working["strict_norm"] = working["strict"].map(train_module.normalize_label_value)
+    working["broad_norm"] = working["broad"].map(lambda value: normalize_label_value(value, treat_two_as_negative=True))
+    working["strict_norm"] = working["strict"].map(lambda value: normalize_label_value(value, treat_two_as_negative=True))
 
     valid_mask = (
         (working[text_col] != "")
@@ -216,6 +126,7 @@ def prepare_shared_dataset(args: argparse.Namespace, base_output_dir: Path) -> t
         val_size=args.val_size,
         test_size=args.test_size,
         seed=args.seed,
+        emit=emit,
     )
 
     split_parts: List[pd.DataFrame] = []
@@ -243,7 +154,7 @@ def prepare_shared_dataset(args: argparse.Namespace, base_output_dir: Path) -> t
         "split_sizes": split_sizes,
     }
     manifest_path = base_output_dir / "shared_split_manifest.json"
-    manifest_path.write_text(json.dumps(split_manifest, ensure_ascii=False, indent=2), encoding="utf-8")
+    save_json(manifest_path, split_manifest)
     return shared_input_path, split_manifest
 
 
@@ -323,10 +234,6 @@ def save_combined_reports(base_output_dir: Path, text_col: str) -> Dict[str, str
     }
 
 
-def load_metrics(metrics_path: Path) -> Dict[str, Any]:
-    return json.loads(metrics_path.read_text(encoding="utf-8"))
-
-
 def main() -> None:
     args = parse_args()
     input_path = Path(args.input_path)
@@ -348,21 +255,28 @@ def main() -> None:
 
     for label_col in ("broad", "strict"):
         output_dir = base_output_dir / label_col
-        command = build_train_command(args, label_col, output_dir)
-        command[command.index("--input_csv") + 1] = str(shared_input_path)
-        command.extend(["--split_col", "__dual_split"])
         emit(f"Training {label_col} model -> {output_dir}")
-        subprocess.run(command, check=True)
-        metrics_path = output_dir / "metrics.json"
+        result = run_training(
+            build_train_config(args, label_col, shared_input_path, output_dir),
+            emit=lambda message, prefix=label_col: emit(f"[{prefix}] {message}"),
+        )
         summary["runs"][label_col] = {
             "output_dir": str(output_dir.resolve()),
-            "metrics_path": str(metrics_path.resolve()),
-            "metrics": load_metrics(metrics_path),
+            "metrics_path": result["metrics_path"],
+            "metrics_snapshot": build_metrics_snapshot(result["metrics"]),
+            "best_model_dir": result["best_model_dir"],
+            "test_predictions_path": result["test_predictions_path"],
+            "test_misclassified_path": result["test_misclassified_path"],
         }
 
     combined_report_paths = save_combined_reports(base_output_dir, shared_split_manifest["text_col"])
     summary["combined_reports"] = combined_report_paths
-    summary_path.write_text(json.dumps(summary, ensure_ascii=False, indent=2), encoding="utf-8")
+    summary["inspect_reports"] = write_dual_run_inspect_artifacts(
+        base_output_dir,
+        experiment_name=base_output_dir.name,
+        text_col=shared_split_manifest["text_col"],
+    )
+    save_json(summary_path, summary)
     emit(f"Dual-training summary saved to {summary_path}")
 
 

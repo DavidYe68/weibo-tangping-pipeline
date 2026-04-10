@@ -1,16 +1,13 @@
 #!/usr/bin/env python3
 import argparse
-import json
 import sys
 from pathlib import Path
-from typing import Any, Dict, Optional
+from typing import Any, Dict
 
 import pandas as pd
 
-
-LABEL_CANDIDATES = ["tangping_related_label", "tangping_related", "label"]
-POSITIVE_ALIASES = {"1", "1.0", "true", "yes", "y", "relevant", "positive", "相关", "有关"}
-NEGATIVE_ALIASES = {"0", "0.0", "false", "no", "n", "irrelevant", "negative", "无关", "不相关"}
+from lib.io_utils import ensure_parent, save_json
+from lib.labels import NORMALIZE_LABEL_CANDIDATES, detect_label_column, normalize_label_value
 
 
 def emit(message: str) -> None:
@@ -44,58 +41,6 @@ def parse_args() -> argparse.Namespace:
     return parser.parse_args()
 
 
-def normalize_label_value(value: Any) -> Optional[int]:
-    if pd.isna(value):
-        return None
-
-    if isinstance(value, bool):
-        return int(value)
-
-    if isinstance(value, int):
-        if value in (0, 1):
-            return int(value)
-
-    if isinstance(value, float):
-        if value in (0.0, 1.0):
-            return int(value)
-
-    text = str(value).strip()
-    if not text:
-        return None
-
-    lowered = text.lower()
-    if lowered in POSITIVE_ALIASES:
-        return 1
-    if lowered in NEGATIVE_ALIASES:
-        return 0
-    return None
-
-
-def detect_label_column(df: pd.DataFrame, forced: Optional[str]) -> str:
-    if forced:
-        if forced not in df.columns:
-            raise ValueError(f"Label column '{forced}' not found in CSV.")
-        return forced
-
-    best_col = None
-    best_valid = -1
-    for column in LABEL_CANDIDATES:
-        if column not in df.columns:
-            continue
-        normalized = df[column].map(normalize_label_value)
-        valid_count = int(normalized.notna().sum())
-        if valid_count > best_valid:
-            best_col = column
-            best_valid = valid_count
-
-    if best_col is None or best_valid <= 0:
-        raise ValueError(
-            "Could not auto-detect a usable label column. "
-            "Please pass --label_col explicitly."
-        )
-    return best_col
-
-
 def build_report(
     df: pd.DataFrame,
     label_source: str,
@@ -117,10 +62,6 @@ def build_report(
     return report
 
 
-def ensure_parent(path: Path) -> None:
-    path.parent.mkdir(parents=True, exist_ok=True)
-
-
 def main() -> None:
     args = parse_args()
 
@@ -136,10 +77,16 @@ def main() -> None:
     if df.empty:
         raise ValueError("Input CSV is empty.")
 
-    label_source = detect_label_column(df, args.label_col)
+    label_source = detect_label_column(
+        df,
+        args.label_col,
+        candidates=NORMALIZE_LABEL_CANDIDATES,
+        treat_two_as_negative=False,
+        source_name="CSV",
+    )
     emit(f"Using label source column: {label_source}")
 
-    normalized = df[label_source].map(normalize_label_value)
+    normalized = df[label_source].map(lambda value: normalize_label_value(value, treat_two_as_negative=False))
     invalid_mask = normalized.isna()
     invalid_rows = df.loc[invalid_mask].copy()
 
@@ -152,26 +99,26 @@ def main() -> None:
             f"Examples: {example_values}"
         )
 
-    df = df.copy()
-    df["label_raw"] = df[label_source]
-    df["label"] = normalized.astype(int)
-    df["label_text"] = df["label"].map({1: "相关", 0: "无关"})
+    working = df.copy()
+    working["label_raw"] = working[label_source]
+    working["label"] = normalized.astype(int)
+    working["label_text"] = working["label"].map({1: "相关", 0: "无关"})
 
-    if "tangping_related_label" in df.columns:
-        df["tangping_related_label_raw"] = df["tangping_related_label"]
-    if "tangping_related" in df.columns:
-        df["tangping_related_raw"] = df["tangping_related"]
+    if "tangping_related_label" in working.columns:
+        working["tangping_related_label_raw"] = working["tangping_related_label"]
+    if "tangping_related" in working.columns:
+        working["tangping_related_raw"] = working["tangping_related"]
 
-    df["tangping_related_label"] = df["label"]
-    df["tangping_related"] = df["label"]
+    working["tangping_related_label"] = working["label"]
+    working["tangping_related"] = working["label"]
 
     ensure_parent(output_csv)
     ensure_parent(report_path)
 
-    report = build_report(df, label_source, invalid_rows)
+    report = build_report(working, label_source, invalid_rows)
 
-    df.to_csv(output_csv, index=False, encoding="utf-8-sig")
-    report_path.write_text(json.dumps(report, ensure_ascii=False, indent=2), encoding="utf-8")
+    working.to_csv(output_csv, index=False, encoding="utf-8-sig")
+    save_json(report_path, report)
 
     emit(f"Wrote normalized CSV to {output_csv}")
     emit(f"Wrote report to {report_path}")
