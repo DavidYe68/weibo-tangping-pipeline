@@ -581,7 +581,12 @@ def parse_args() -> argparse.Namespace:
     config_required = any(arg == "--config" or arg.startswith("--config=") for arg in sys.argv[1:])
     config_defaults = load_config_file(bootstrap_args.config, required=config_required)
 
-    parser = argparse.ArgumentParser(description="LLM labeling for tangping relevance with Qwen labeler + optional fixer fallback")
+    parser = argparse.ArgumentParser(
+        description=(
+            "LLM pre-labeling for tangping relevance with Qwen labeler + optional fixer fallback. "
+            "Outputs are only a draft for human review, not final training labels."
+        )
+    )
     parser.add_argument("--config", default=bootstrap_args.config)
     parser.add_argument("--input", default="bert/data/sample.csv")
     parser.add_argument("--output", default="bert/data/labeled.csv")
@@ -1231,6 +1236,7 @@ def main() -> None:
 
     start_ts = time.time()
     logger.info("stage=load_input input=%s output=%s report=%s", args.input, args.output, args.report_path)
+    logger.info("stage=manual_review note=%s", "LLM output is draft-only and must be manually reviewed before training.")
 
     df = load_dataframe(args.input)
     total = len(df)
@@ -1364,6 +1370,7 @@ def main() -> None:
         "fixer_provider": args.fixer_provider,
         "fixer_model": args.fixer_model,
         "fixer_base_url": fixer_base_url,
+        "manual_review_required": True,
         "save_every": args.save_every,
         "elapsed_sec": round(elapsed, 3),
         "stats": {

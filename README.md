@@ -48,48 +48,39 @@ python main.py export-csv merged
 python main.py export-csv text
 ```
 
-## 直接试训 sample_6000 标注集
+## BERT 标注与训练
 
-如果你已经把标注文件放在 `bert/data/sample_6000_labeled.xlsx`，可以直接分别训练 `broad` 和 `strict` 两套 BERT：
+`bert/` 现在按“人工审核后的多个文件自由组合”来使用，而不是按固定案例写死。
+
+先记住两个原则：
+
+- `02_llm_label_local.py` 只做 LLM 预标注，输出一定要人工审核后再进入训练。
+- `04_train_bert_classifier.py` 和 `05_train_dual_label_classifier.py` 都支持直接传入多个 CSV/XLSX，并显式指定哪些文件只进 train / val / test。
+
+单标签训练示例：
 
 ```bash
-python3 bert/05_train_sample_6000_dual.py --local_files_only
+python3 bert/04_train_bert_classifier.py \
+  --input_csv "bert/data/reviewed_a.csv" "bert/data/reviewed_b.csv" \
+  --output_dir "bert/artifacts/single_label_run"
 ```
 
-输出目录默认是：
+双标签训练示例：
 
-- `bert/artifacts/sample_6000/broad/`
-- `bert/artifacts/sample_6000/strict/`
-- `bert/artifacts/sample_6000/shared_split_dataset.csv`
-- `bert/artifacts/sample_6000/test_predictions_side_by_side.csv`
-- `bert/artifacts/sample_6000/test_misclassified_side_by_side.csv`
+```bash
+python3 bert/05_train_dual_label_classifier.py \
+  --input_path "bert/data/reviewed_part1.csv" "bert/data/reviewed_part2.csv" \
+  --test_path "bert/data/reviewed_holdout.csv" \
+  --base_output_dir "bert/artifacts/dual_label_holdout"
+```
 
-每套都会产出：
+这两类脚本都支持：
 
-- `train_split.csv`
-- `val_split.csv`
-- `test_split.csv`
-- `metrics.json`
-- `training_history.json`
-- `test_predictions.csv`
-- `test_misclassified.csv`
-- `best_model/`
+- 把多份已审核文件直接合并后随机切分。
+- 把某些文件固定留作测试集。
+- 把某些文件只放进训练集做增强。
 
-其中基目录下额外会产出一组方便排查的问题清单：
-
-- `test_predictions_side_by_side.csv`：同一批测试样本里 `broad` / `strict` 的预测结果横向对齐
-- `test_misclassified_side_by_side.csv`：只保留测试集里至少有一边预测错误的样本
-- `inspect/summary.md`：一眼看“先查哪类问题、先开哪个文件”
-- `inspect/label_diagnosis.csv`：按标签给出当前更像 `FP` 问题还是 `FN` 问题
-- `inspect/metrics_overview.csv`：把关键 val/test 指标压平成一张表
-- `inspect/error_summary.csv`：按 `FP/FN` 汇总错误数量
-- `inspect/side_by_side_error_summary.csv`：看两套标准是一起错，还是只有一边错
-- `inspect/top_fp_*.csv` / `inspect/top_fn_*.csv`：按问题类型拆开的重点错例，适合直接人工排查
-
-补充说明：
-
-- `bert/04_train_bert_classifier.py`、`bert/05_train_sample_6000_dual.py`、`bert/06_eval_by_source.py`、`bert/07_predict_bert_classifier.py` 现在主要负责 CLI 参数和流程编排。
-- 共享的数据读取、标签归一化、切分、训练与预测实现已经统一抽到 `bert/lib/`，后续加新的评估协议时不需要再在多个脚本里复制逻辑。
+更完整的说明见 [`bert/README.md`](bert/README.md)。
 
 ## Windows + NVIDIA 4060
 

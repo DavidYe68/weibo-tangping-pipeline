@@ -4,15 +4,11 @@ import sys
 from pathlib import Path
 from typing import Any, Dict, List
 
-import numpy as np
 import pandas as pd
 
-from lib.data_utils import detect_text_column, load_training_dataframe
+from lib.collection_utils import load_text_collection_frame
 from lib.io_utils import save_json
 from lib.labels import normalize_label_value
-from lib.reporting import build_metrics_snapshot, write_dual_run_inspect_artifacts
-from lib.splits import create_shared_splits
-from lib.training import TrainClassifierConfig, run_training
 
 
 def emit(message: str) -> None:
@@ -21,16 +17,45 @@ def emit(message: str) -> None:
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
-        description="Train separate BERT classifiers for broad and strict labels from sample_6000_labeled.xlsx."
+        description=(
+            "Train broad/strict dual-label BERT classifiers from one or more reviewed CSV/XLSX files. "
+            "Use --input_path for files that should be randomly split, and --train_path/--val_path/--test_path "
+            "for files that must stay in a fixed split."
+        )
     )
     parser.add_argument(
         "--input_path",
-        default="bert/data/sample_6000_labeled.xlsx",
-        help="Excel dataset path.",
+        nargs="*",
+        default=None,
+        help="One or more reviewed CSV/XLSX files to merge and randomly split into train/val/test.",
+    )
+    parser.add_argument(
+        "--train_path",
+        nargs="*",
+        default=None,
+        help="CSV/XLSX files forced into the training split.",
+    )
+    parser.add_argument(
+        "--train_only_path",
+        nargs="*",
+        default=None,
+        help="Alias of --train_path for train-only files.",
+    )
+    parser.add_argument(
+        "--val_path",
+        nargs="*",
+        default=None,
+        help="CSV/XLSX files forced into the validation split.",
+    )
+    parser.add_argument(
+        "--test_path",
+        nargs="*",
+        default=None,
+        help="CSV/XLSX files forced into the test split.",
     )
     parser.add_argument(
         "--base_output_dir",
-        default="bert/artifacts/sample_6000",
+        default="bert/artifacts/dual_label_run",
         help="Base directory for broad/strict model outputs.",
     )
     parser.add_argument(
@@ -38,7 +63,9 @@ def parse_args() -> argparse.Namespace:
         default="bert-base-chinese",
         help="HF model name or local path for the base encoder.",
     )
-    parser.add_argument("--text_col", default="cleaned_text", help="Text column name.")
+    parser.add_argument("--text_col", default=None, help="Optional preferred text column name.")
+    parser.add_argument("--broad_col", default="broad", help="Broad-label column name.")
+    parser.add_argument("--strict_col", default="strict", help="Strict-label column name.")
     parser.add_argument("--sheet_name", default=None, help="Optional Excel sheet name.")
     parser.add_argument("--max_length", type=int, default=256, help="Maximum token length.")
     parser.add_argument("--batch_size", type=int, default=16, help="Batch size.")
@@ -47,8 +74,8 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--weight_decay", type=float, default=0.01, help="Weight decay.")
     parser.add_argument("--warmup_ratio", type=float, default=0.1, help="Warmup ratio.")
     parser.add_argument("--max_grad_norm", type=float, default=1.0, help="Gradient clipping value.")
-    parser.add_argument("--val_size", type=float, default=0.1, help="Validation split ratio.")
-    parser.add_argument("--test_size", type=float, default=0.1, help="Test split ratio.")
+    parser.add_argument("--val_size", type=float, default=0.1, help="Validation split ratio for --input_path files.")
+    parser.add_argument("--test_size", type=float, default=0.1, help="Test split ratio for --input_path files.")
     parser.add_argument(
         "--positive_threshold",
         type=float,
@@ -70,12 +97,70 @@ def parse_args() -> argparse.Namespace:
     return parser.parse_args()
 
 
-def build_train_config(args: argparse.Namespace, label_col: str, input_path: Path, output_dir: Path) -> TrainClassifierConfig:
+def resolve_path_group(values: List[str] | None) -> List[Path]:
+    return [Path(value) for value in (values or []) if str(value).strip()]
+
+
+def concat_frames(frames: List[pd.DataFrame]) -> pd.DataFrame:
+    if not frames:
+        return pd.DataFrame()
+    return pd.concat(frames, ignore_index=True)
+
+
+def resolve_input_groups(args: argparse.Namespace) -> Dict[str, List[Path]]:
+    groups = {
+        "pool": resolve_path_group(args.input_path),
+        "train": resolve_path_group(args.train_path) + resolve_path_group(args.train_only_path),
+        "val": resolve_path_group(args.val_path),
+        "test": resolve_path_group(args.test_path),
+    }
+    if any(groups.values()):
+        return groups
+
+    raise ValueError("Please provide at least one reviewed CSV/XLSX via --input_path/--train_path/--val_path/--test_path.")
+
+
+def normalize_dual_frame(args: argparse.Namespace, path: Path) -> pd.DataFrame:
+    working = load_text_collection_frame(
+        path,
+        sheet_name=args.sheet_name,
+        text_col_hint=args.text_col,
+    )
+    for label_col in (args.broad_col, args.strict_col):
+        if label_col not in working.columns:
+            raise ValueError(f"Required label column '{label_col}' not found in {path}")
+
+    working["broad"] = working[args.broad_col].map(
+        lambda value: normalize_label_value(value, treat_two_as_negative=True)
+    )
+    working["strict"] = working[args.strict_col].map(
+        lambda value: normalize_label_value(value, treat_two_as_negative=True)
+    )
+    usable = working[
+        (working["__text"] != "")
+        & working["broad"].notna()
+        & working["strict"].notna()
+    ].copy().reset_index(drop=True)
+    if usable.empty:
+        raise ValueError(f"No usable rows with valid text/broad/strict labels in {path}")
+
+    usable["broad"] = usable["broad"].astype(int)
+    usable["strict"] = usable["strict"].astype(int)
+    usable["broad_norm"] = usable["broad"]
+    usable["strict_norm"] = usable["strict"]
+    usable["__resolved_broad_col"] = args.broad_col
+    usable["__resolved_strict_col"] = args.strict_col
+    return usable
+
+
+def build_train_config(args: argparse.Namespace, label_col: str, input_path: Path, output_dir: Path):
+    from lib.training import TrainClassifierConfig
+
     return TrainClassifierConfig(
         input_csv=str(input_path),
         output_dir=str(output_dir),
         model_name_or_path=args.model_name_or_path,
-        text_col=args.text_col,
+        text_col="__text",
         label_col=label_col,
         split_col="__dual_split",
         sheet_name=args.sheet_name,
@@ -96,65 +181,76 @@ def build_train_config(args: argparse.Namespace, label_col: str, input_path: Pat
 
 
 def prepare_shared_dataset(args: argparse.Namespace, base_output_dir: Path) -> tuple[Path, Dict[str, Any]]:
-    input_path = Path(args.input_path)
-    df = load_training_dataframe(input_path, args.sheet_name)
-    if df.empty:
-        raise ValueError("Input dataset is empty.")
+    from lib.splits import create_shared_splits
 
-    text_col = detect_text_column(df, args.text_col, source_name="dataset")
-    for label_col in ("broad", "strict"):
-        if label_col not in df.columns:
-            raise ValueError(f"Required label column '{label_col}' not found in dataset.")
+    groups = resolve_input_groups(args)
+    prepared_frames = {
+        split_name: [normalize_dual_frame(args, path) for path in paths]
+        for split_name, paths in groups.items()
+    }
+    pool_df = concat_frames(prepared_frames["pool"])
 
-    working = df.copy()
-    working["__dual_row_id"] = np.arange(len(working), dtype=np.int64)
-    working[text_col] = working[text_col].fillna("").astype(str).str.strip()
-    working["broad_norm"] = working["broad"].map(lambda value: normalize_label_value(value, treat_two_as_negative=True))
-    working["strict_norm"] = working["strict"].map(lambda value: normalize_label_value(value, treat_two_as_negative=True))
-
-    valid_mask = (
-        (working[text_col] != "")
-        & working["broad_norm"].notna()
-        & working["strict_norm"].notna()
-    )
-    usable_df = working.loc[valid_mask].copy().reset_index(drop=True)
-    if len(usable_df) < 20:
-        raise ValueError("Too few rows with valid broad/strict labels after cleaning.")
-
-    split_frames, split_strategy = create_shared_splits(
-        df=usable_df,
-        val_size=args.val_size,
-        test_size=args.test_size,
-        seed=args.seed,
-        emit=emit,
-    )
+    pool_split_frames: Dict[str, pd.DataFrame] = {}
+    split_strategy = "predefined_only"
+    if not pool_df.empty:
+        pool_split_frames, split_strategy = create_shared_splits(
+            df=pool_df,
+            val_size=args.val_size,
+            test_size=args.test_size,
+            seed=args.seed,
+            emit=emit,
+        )
 
     split_parts: List[pd.DataFrame] = []
     split_sizes: Dict[str, int] = {}
-    for split_name, split_df in split_frames.items():
-        tagged = split_df.copy()
+    source_breakdown: Dict[str, Dict[str, int]] = {}
+
+    for split_name in ("train", "val", "test"):
+        frames = []
+        if split_name in pool_split_frames:
+            frames.append(pool_split_frames[split_name])
+        explicit_frame = concat_frames(prepared_frames[split_name])
+        if not explicit_frame.empty:
+            frames.append(explicit_frame)
+        merged = concat_frames(frames)
+        if merged.empty:
+            continue
+        tagged = merged.copy()
         tagged["__dual_split"] = split_name
         split_parts.append(tagged)
         split_sizes[split_name] = int(len(tagged))
+        source_breakdown[split_name] = {
+            str(source): int(count)
+            for source, count in tagged["__source_name"].value_counts().sort_index().to_dict().items()
+        }
+
+    missing_splits = [split_name for split_name in ("train", "val", "test") if split_name not in split_sizes]
+    if missing_splits:
+        raise ValueError(
+            "Dual training requires non-empty train/val/test splits. "
+            f"Missing: {', '.join(missing_splits)}. "
+            "Use --input_path to let the script split a pooled dataset, or provide the missing split files explicitly."
+        )
 
     shared_df = pd.concat(split_parts, ignore_index=True)
+    shared_df["__dual_row_id"] = range(len(shared_df))
     shared_df = shared_df.drop(columns=["broad_norm", "strict_norm"])
+
     shared_input_path = base_output_dir / "shared_split_dataset.csv"
     shared_input_path.parent.mkdir(parents=True, exist_ok=True)
     shared_df.to_csv(shared_input_path, index=False, encoding="utf-8-sig")
 
     split_manifest = {
         "shared_input_path": str(shared_input_path.resolve()),
-        "text_col": text_col,
+        "text_col": "__text",
         "split_col": "__dual_split",
         "split_strategy": split_strategy,
-        "total_rows": int(len(df)),
-        "usable_rows": int(len(usable_df)),
-        "dropped_rows": int(len(df) - len(usable_df)),
+        "rows": int(len(shared_df)),
         "split_sizes": split_sizes,
+        "source_breakdown": source_breakdown,
+        "input_groups": {name: [str(path.resolve()) for path in paths] for name, paths in groups.items()},
     }
-    manifest_path = base_output_dir / "shared_split_manifest.json"
-    save_json(manifest_path, split_manifest)
+    save_json(base_output_dir / "shared_split_manifest.json", split_manifest)
     return shared_input_path, split_manifest
 
 
@@ -180,7 +276,9 @@ def build_side_by_side_predictions(
     if row_key not in broad_df.columns or row_key not in strict_df.columns:
         raise ValueError("Combined comparison requires '__dual_row_id' in both prediction files.")
 
-    base_columns = [column for column in [row_key, "__dual_split", "id", text_col] if column in broad_df.columns]
+    base_columns = [
+        column for column in [row_key, "__dual_split", "__source_name", "id", text_col] if column in broad_df.columns
+    ]
     base_df = broad_df[base_columns].copy()
 
     compare_columns = [
@@ -236,18 +334,16 @@ def save_combined_reports(base_output_dir: Path, text_col: str) -> Dict[str, str
 
 def main() -> None:
     args = parse_args()
-    input_path = Path(args.input_path)
+    from lib.reporting import build_metrics_snapshot, write_dual_run_inspect_artifacts
+    from lib.training import run_training
+
     base_output_dir = Path(args.base_output_dir)
     summary_path = base_output_dir / "summary.json"
-
-    if not input_path.exists():
-        raise FileNotFoundError(f"Input Excel not found: {input_path}")
 
     base_output_dir.mkdir(parents=True, exist_ok=True)
     shared_input_path, shared_split_manifest = prepare_shared_dataset(args, base_output_dir)
 
     summary: Dict[str, Any] = {
-        "input_path": str(input_path.resolve()),
         "base_output_dir": str(base_output_dir.resolve()),
         "shared_split": shared_split_manifest,
         "runs": {},
@@ -258,7 +354,7 @@ def main() -> None:
         emit(f"Training {label_col} model -> {output_dir}")
         result = run_training(
             build_train_config(args, label_col, shared_input_path, output_dir),
-            emit=lambda message, prefix=label_col: emit(f"[{prefix}] {message}"),
+            emit=emit,
         )
         summary["runs"][label_col] = {
             "output_dir": str(output_dir.resolve()),
@@ -269,15 +365,15 @@ def main() -> None:
             "test_misclassified_path": result["test_misclassified_path"],
         }
 
-    combined_report_paths = save_combined_reports(base_output_dir, shared_split_manifest["text_col"])
-    summary["combined_reports"] = combined_report_paths
+    summary["combined_reports"] = save_combined_reports(base_output_dir, "__text")
     summary["inspect_reports"] = write_dual_run_inspect_artifacts(
         base_output_dir,
-        experiment_name=base_output_dir.name,
-        text_col=shared_split_manifest["text_col"],
+        experiment_name="dual_label_run",
+        text_col="__text",
+        source_col="__source_name",
     )
     save_json(summary_path, summary)
-    emit(f"Dual-training summary saved to {summary_path}")
+    emit(f"Dual-label training summary saved to {summary_path}")
 
 
 if __name__ == "__main__":
