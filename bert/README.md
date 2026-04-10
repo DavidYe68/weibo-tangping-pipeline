@@ -96,7 +96,7 @@ python3 bert/05_train_dual_label_classifier.py \
 ```bash
 python3 bert/05_train_dual_label_classifier.py \
   --input_path "bert/data/reviewed_pool_a.csv" "bert/data/reviewed_pool_b.csv" \
-  --train_only_path "bert/data/reviewed_manual_boost.csv" \
+  --train_path "bert/data/reviewed_manual_boost.csv" \
   --test_path "bert/data/reviewed_external_test.csv" \
   --base_output_dir "bert/artifacts/dual_label_holdout"
 ```
@@ -104,18 +104,18 @@ python3 bert/05_train_dual_label_classifier.py \
 规则和 `04` 一样：
 
 - `--input_path`：合并后随机切分。
-- `--train_path` / `--train_only_path`：只进训练集。
+- `--train_path`：只进训练集。
 - `--val_path`：只进验证集。
 - `--test_path`：只进测试集。
 
 如果你想“分开测试多个来源”，最直接的做法就是多跑几次 `05`，每次把不同来源放到 `--test_path`。
 
-### 关于 `*_only`
+### 关于固定 split 参数
 
-如果你传了 `--train_only_path` 这类参数：
+如果你传了 `--train_path`、`--val_path`、`--test_path` 这类参数：
 
 - `--input_path` 里的文件仍然先按 `val_size` / `test_size` 自己完成随机切分。
-- `*_only` 文件是在切分完成后再追加到指定 split。
+- 这些固定 split 的文件是在切分完成后再追加到指定 split。
 - 所以“`input_path` 这批数据内部的切分比例”不会变。
 - 变化的是“最终总数据集”的整体比例，因为你额外加了只进某个 split 的样本。
 

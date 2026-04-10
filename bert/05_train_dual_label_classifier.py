@@ -36,12 +36,6 @@ def parse_args() -> argparse.Namespace:
         help="CSV/XLSX files forced into the training split.",
     )
     parser.add_argument(
-        "--train_only_path",
-        nargs="*",
-        default=None,
-        help="Alias of --train_path for train-only files.",
-    )
-    parser.add_argument(
         "--val_path",
         nargs="*",
         default=None,
@@ -110,7 +104,7 @@ def concat_frames(frames: List[pd.DataFrame]) -> pd.DataFrame:
 def resolve_input_groups(args: argparse.Namespace) -> Dict[str, List[Path]]:
     groups = {
         "pool": resolve_path_group(args.input_path),
-        "train": resolve_path_group(args.train_path) + resolve_path_group(args.train_only_path),
+        "train": resolve_path_group(args.train_path),
         "val": resolve_path_group(args.val_path),
         "test": resolve_path_group(args.test_path),
     }
