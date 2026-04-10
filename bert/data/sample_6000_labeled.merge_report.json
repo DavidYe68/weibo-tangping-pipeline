@@ -1,0 +1,34 @@
+{
+  "output": "/Users/apple/Local/fdurop/code/result/bert/data/sample_6000_labeled.xlsx",
+  "primary": "/Users/apple/Local/fdurop/code/result/bert/data/sample_1.xlsx",
+  "inputs": [
+    "/Users/apple/Local/fdurop/code/result/bert/data/sample_1.xlsx",
+    "/Users/apple/Local/fdurop/code/result/bert/data/sample_2.xlsx",
+    "/Users/apple/Local/fdurop/code/result/bert/data/sample_foxi.xlsx"
+  ],
+  "rows": 5938,
+  "updates": 13882,
+  "appended_rows": 3424,
+  "conflicts": 0,
+  "conflict_details": [],
+  "sources": [
+    {
+      "source_file": "sample_2.xlsx",
+      "header_mode": "no_header",
+      "rows_seen": 2394,
+      "matched_rows": 0,
+      "appended_rows": 2394,
+      "updated_cells": 9263,
+      "conflicts": 0
+    },
+    {
+      "source_file": "sample_foxi.xlsx",
+      "header_mode": "double_header",
+      "rows_seen": 5816,
+      "matched_rows": 4786,
+      "appended_rows": 1030,
+      "updated_cells": 4619,
+      "conflicts": 0
+    }
+  ]
+}

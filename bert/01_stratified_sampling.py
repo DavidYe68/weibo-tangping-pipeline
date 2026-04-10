@@ -35,7 +35,7 @@ def parse_args() -> argparse.Namespace:
         description="Stratified sampling from parquet files with exact sample size."
     )
     parser.add_argument("--input", default="data/processed/text_dedup/*.parquet", help="Input parquet glob pattern")
-    parser.add_argument("--output", default="data/bert/sample.csv", help="Output CSV path")
+    parser.add_argument("--output", default="bert/data/sample.csv", help="Output CSV path")
     parser.add_argument("--n", type=int, default=6000, help="Target sample size")
     parser.add_argument("--seed", type=int, default=42, help="Random seed")
     parser.add_argument(
@@ -47,7 +47,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--text_col", default=None, help="Optional forced text column name")
     parser.add_argument(
         "--report_path",
-        default="data/bert/sampling_report.json",
+        default="bert/data/sampling_report.json",
         help="Sampling report JSON path",
     )
     return parser.parse_args()

@@ -1,0 +1,3217 @@
+{
+  "input_pattern": "data/processed/text_dedup/*.parquet",
+  "output_csv": "data/bert/sample_100_for_checkup.csv",
+  "input_rows": 3420148,
+  "dedup_applied_in_sampling": false,
+  "sample_n": 1000,
+  "seed": 42,
+  "k_min": 1,
+  "text_col": "cleaned_text",
+  "used_stratification_dims": [
+    "month",
+    "keyword",
+    "len_bin"
+  ],
+  "detected_columns": {
+    "month_source_col": "发布时间",
+    "keyword_source_col": "keyword"
+  },
+  "strata": {
+    "2023-01|%23摆烂%23|<=20": {
+      "population_count": 85,
+      "sample_count": 1
+    },
+    "2023-01|%23摆烂%23|61-140": {
+      "population_count": 31,
+      "sample_count": 1
+    },
+    "2023-01|%23摆烂%23|21-60": {
+      "population_count": 102,
+      "sample_count": 1
+    },
+    "2023-01|%23躺平%23|>140": {
+      "population_count": 10679,
+      "sample_count": 1
+    },
+    "2023-01|%23躺平%23|61-140": {
+      "population_count": 368,
+      "sample_count": 1
+    },
+    "2023-01|佛系|>140": {
+      "population_count": 4412,
+      "sample_count": 1
+    },
+    "2023-01|佛系|61-140": {
+      "population_count": 4897,
+      "sample_count": 1
+    },
+    "2023-01|佛系|21-60": {
+      "population_count": 6688,
+      "sample_count": 1
+    },
+    "2023-01|佛系|<=20": {
+      "population_count": 2301,
+      "sample_count": 1
+    },
+    "2023-01|摆烂|21-60": {
+      "population_count": 5067,
+      "sample_count": 1
+    },
+    "2023-01|摆烂|>140": {
+      "population_count": 1914,
+      "sample_count": 1
+    },
+    "2023-01|摆烂|<=20": {
+      "population_count": 3698,
+      "sample_count": 1
+    },
+    "2023-01|摆烂|61-140": {
+      "population_count": 2662,
+      "sample_count": 1
+    },
+    "2023-01|躺平|61-140": {
+      "population_count": 4760,
+      "sample_count": 1
+    },
+    "2023-01|躺平|<=20": {
+      "population_count": 3571,
+      "sample_count": 1
+    },
+    "2023-01|躺平|21-60": {
+      "population_count": 6471,
+      "sample_count": 1
+    },
+    "2023-01|躺平|>140": {
+      "population_count": 341,
+      "sample_count": 1
+    },
+    "2023-01|%23躺平%23|21-60": {
+      "population_count": 24,
+      "sample_count": 1
+    },
+    "2023-01|%23摆烂%23|>140": {
+      "population_count": 7,
+      "sample_count": 1
+    },
+    "2023-01|%23躺平%23|<=20": {
+      "population_count": 16,
+      "sample_count": 1
+    },
+    "2023-02|%23摆烂%23|<=20": {
+      "population_count": 151,
+      "sample_count": 1
+    },
+    "2023-02|%23摆烂%23|61-140": {
+      "population_count": 32,
+      "sample_count": 1
+    },
+    "2023-02|%23摆烂%23|21-60": {
+      "population_count": 176,
+      "sample_count": 1
+    },
+    "2023-02|%23摆烂%23|>140": {
+      "population_count": 7,
+      "sample_count": 1
+    },
+    "2023-02|%23躺平%23|>140": {
+      "population_count": 8336,
+      "sample_count": 1
+    },
+    "2023-02|%23躺平%23|61-140": {
+      "population_count": 271,
+      "sample_count": 1
+    },
+    "2023-02|佛系|21-60": {
+      "population_count": 6429,
+      "sample_count": 1
+    },
+    "2023-02|佛系|<=20": {
+      "population_count": 2506,
+      "sample_count": 1
+    },
+    "2023-02|佛系|>140": {
+      "population_count": 4259,
+      "sample_count": 1
+    },
+    "2023-02|佛系|61-140": {
+      "population_count": 4435,
+      "sample_count": 1
+    },
+    "2023-02|%23躺平%23|21-60": {
+      "population_count": 23,
+      "sample_count": 1
+    },
+    "2023-02|%23躺平%23|<=20": {
+      "population_count": 9,
+      "sample_count": 1
+    },
+    "2023-02|摆烂|>140": {
+      "population_count": 558,
+      "sample_count": 1
+    },
+    "2023-02|摆烂|61-140": {
+      "population_count": 672,
+      "sample_count": 1
+    },
+    "2023-02|摆烂|<=20": {
+      "population_count": 828,
+      "sample_count": 1
+    },
+    "2023-02|摆烂|21-60": {
+      "population_count": 1188,
+      "sample_count": 1
+    },
+    "2023-02|躺平|<=20": {
+      "population_count": 4679,
+      "sample_count": 1
+    },
+    "2023-02|躺平|61-140": {
+      "population_count": 5229,
+      "sample_count": 1
+    },
+    "2023-02|躺平|21-60": {
+      "population_count": 7798,
+      "sample_count": 1
+    },
+    "2023-02|躺平|>140": {
+      "population_count": 345,
+      "sample_count": 1
+    },
+    "2023-03|%23摆烂%23|<=20": {
+      "population_count": 184,
+      "sample_count": 1
+    },
+    "2023-03|%23摆烂%23|21-60": {
+      "population_count": 200,
+      "sample_count": 1
+    },
+    "2023-03|%23躺平%23|>140": {
+      "population_count": 9129,
+      "sample_count": 1
+    },
+    "2023-03|%23躺平%23|61-140": {
+      "population_count": 333,
+      "sample_count": 1
+    },
+    "2023-03|%23躺平%23|<=20": {
+      "population_count": 10,
+      "sample_count": 1
+    },
+    "2023-03|佛系|61-140": {
+      "population_count": 5566,
+      "sample_count": 1
+    },
+    "2023-03|佛系|<=20": {
+      "population_count": 2688,
+      "sample_count": 1
+    },
+    "2023-03|佛系|>140": {
+      "population_count": 4679,
+      "sample_count": 1
+    },
+    "2023-03|佛系|21-60": {
+      "population_count": 7772,
+      "sample_count": 1
+    },
+    "2023-03|摆烂|21-60": {
+      "population_count": 2740,
+      "sample_count": 1
+    },
+    "2023-03|摆烂|>140": {
+      "population_count": 1195,
+      "sample_count": 1
+    },
+    "2023-03|摆烂|61-140": {
+      "population_count": 1542,
+      "sample_count": 1
+    },
+    "2023-03|摆烂|<=20": {
+      "population_count": 1941,
+      "sample_count": 1
+    },
+    "2023-03|躺平|61-140": {
+      "population_count": 10898,
+      "sample_count": 1
+    },
+    "2023-03|躺平|21-60": {
+      "population_count": 16265,
+      "sample_count": 3
+    },
+    "2023-03|躺平|<=20": {
+      "population_count": 9383,
+      "sample_count": 1
+    },
+    "2023-03|躺平|>140": {
+      "population_count": 756,
+      "sample_count": 1
+    },
+    "2023-03|%23摆烂%23|61-140": {
+      "population_count": 38,
+      "sample_count": 1
+    },
+    "2023-03|%23摆烂%23|>140": {
+      "population_count": 17,
+      "sample_count": 1
+    },
+    "2023-03|%23躺平%23|21-60": {
+      "population_count": 26,
+      "sample_count": 1
+    },
+    "2023-04|%23摆烂%23|21-60": {
+      "population_count": 156,
+      "sample_count": 1
+    },
+    "2023-04|%23摆烂%23|61-140": {
+      "population_count": 45,
+      "sample_count": 1
+    },
+    "2023-04|%23摆烂%23|<=20": {
+      "population_count": 133,
+      "sample_count": 1
+    },
+    "2023-04|%23躺平%23|>140": {
+      "population_count": 8457,
+      "sample_count": 1
+    },
+    "2023-04|%23躺平%23|61-140": {
+      "population_count": 300,
+      "sample_count": 1
+    },
+    "2023-04|%23躺平%23|21-60": {
+      "population_count": 24,
+      "sample_count": 1
+    },
+    "2023-04|%23躺平%23|<=20": {
+      "population_count": 14,
+      "sample_count": 1
+    },
+    "2023-04|佛系|61-140": {
+      "population_count": 5171,
+      "sample_count": 1
+    },
+    "2023-04|佛系|<=20": {
+      "population_count": 2621,
+      "sample_count": 1
+    },
+    "2023-04|佛系|>140": {
+      "population_count": 4610,
+      "sample_count": 1
+    },
+    "2023-04|佛系|21-60": {
+      "population_count": 7710,
+      "sample_count": 1
+    },
+    "2023-04|摆烂|21-60": {
+      "population_count": 20095,
+      "sample_count": 4
+    },
+    "2023-04|摆烂|<=20": {
+      "population_count": 15316,
+      "sample_count": 3
+    },
+    "2023-04|摆烂|>140": {
+      "population_count": 7696,
+      "sample_count": 1
+    },
+    "2023-04|摆烂|61-140": {
+      "population_count": 10582,
+      "sample_count": 2
+    },
+    "2023-04|躺平|61-140": {
+      "population_count": 9126,
+      "sample_count": 2
+    },
+    "2023-04|躺平|21-60": {
+      "population_count": 14716,
+      "sample_count": 2
+    },
+    "2023-04|躺平|<=20": {
+      "population_count": 8670,
+      "sample_count": 2
+    },
+    "2023-04|躺平|>140": {
+      "population_count": 496,
+      "sample_count": 1
+    },
+    "2023-04|%23摆烂%23|>140": {
+      "population_count": 8,
+      "sample_count": 1
+    },
+    "2023-05|%23摆烂%23|<=20": {
+      "population_count": 124,
+      "sample_count": 1
+    },
+    "2023-05|%23摆烂%23|21-60": {
+      "population_count": 158,
+      "sample_count": 1
+    },
+    "2023-05|%23摆烂%23|>140": {
+      "population_count": 11,
+      "sample_count": 1
+    },
+    "2023-05|%23躺平%23|>140": {
+      "population_count": 8541,
+      "sample_count": 2
+    },
+    "2023-05|%23躺平%23|21-60": {
+      "population_count": 23,
+      "sample_count": 1
+    },
+    "2023-05|%23躺平%23|61-140": {
+      "population_count": 301,
+      "sample_count": 1
+    },
+    "2023-05|佛系|<=20": {
+      "population_count": 2701,
+      "sample_count": 1
+    },
+    "2023-05|佛系|61-140": {
+      "population_count": 5972,
+      "sample_count": 1
+    },
+    "2023-05|佛系|21-60": {
+      "population_count": 8144,
+      "sample_count": 1
+    },
+    "2023-05|佛系|>140": {
+      "population_count": 4693,
+      "sample_count": 1
+    },
+    "2023-05|摆烂|>140": {
+      "population_count": 9946,
+      "sample_count": 2
+    },
+    "2023-05|摆烂|21-60": {
+      "population_count": 25965,
+      "sample_count": 6
+    },
+    "2023-05|摆烂|<=20": {
+      "population_count": 18751,
+      "sample_count": 4
+    },
+    "2023-05|摆烂|61-140": {
+      "population_count": 13868,
+      "sample_count": 2
+    },
+    "2023-05|躺平|61-140": {
+      "population_count": 8726,
+      "sample_count": 2
+    },
+    "2023-05|躺平|<=20": {
+      "population_count": 8090,
+      "sample_count": 1
+    },
+    "2023-05|躺平|21-60": {
+      "population_count": 14341,
+      "sample_count": 2
+    },
+    "2023-05|躺平|>140": {
+      "population_count": 509,
+      "sample_count": 1
+    },
+    "2023-05|%23躺平%23|<=20": {
+      "population_count": 14,
+      "sample_count": 1
+    },
+    "2023-05|%23摆烂%23|61-140": {
+      "population_count": 26,
+      "sample_count": 1
+    },
+    "2023-06|%23摆烂%23|21-60": {
+      "population_count": 73,
+      "sample_count": 1
+    },
+    "2023-06|%23摆烂%23|61-140": {
+      "population_count": 24,
+      "sample_count": 1
+    },
+    "2023-06|%23摆烂%23|<=20": {
+      "population_count": 45,
+      "sample_count": 1
+    },
+    "2023-06|%23摆烂%23|>140": {
+      "population_count": 7,
+      "sample_count": 1
+    },
+    "2023-06|%23躺平%23|>140": {
+      "population_count": 7669,
+      "sample_count": 1
+    },
+    "2023-06|%23躺平%23|61-140": {
+      "population_count": 258,
+      "sample_count": 1
+    },
+    "2023-06|%23躺平%23|21-60": {
+      "population_count": 29,
+      "sample_count": 1
+    },
+    "2023-06|佛系|61-140": {
+      "population_count": 5057,
+      "sample_count": 1
+    },
+    "2023-06|佛系|>140": {
+      "population_count": 4273,
+      "sample_count": 1
+    },
+    "2023-06|佛系|21-60": {
+      "population_count": 7197,
+      "sample_count": 1
+    },
+    "2023-06|佛系|<=20": {
+      "population_count": 2448,
+      "sample_count": 1
+    },
+    "2023-06|摆烂|>140": {
+      "population_count": 11248,
+      "sample_count": 2
+    },
+    "2023-06|摆烂|21-60": {
+      "population_count": 28775,
+      "sample_count": 6
+    },
+    "2023-06|摆烂|61-140": {
+      "population_count": 15358,
+      "sample_count": 3
+    },
+    "2023-06|摆烂|<=20": {
+      "population_count": 19905,
+      "sample_count": 4
+    },
+    "2023-06|躺平|<=20": {
+      "population_count": 7190,
+      "sample_count": 1
+    },
+    "2023-06|躺平|21-60": {
+      "population_count": 12348,
+      "sample_count": 2
+    },
+    "2023-06|躺平|61-140": {
+      "population_count": 8174,
+      "sample_count": 1
+    },
+    "2023-06|躺平|>140": {
+      "population_count": 545,
+      "sample_count": 1
+    },
+    "2023-06|%23躺平%23|<=20": {
+      "population_count": 10,
+      "sample_count": 1
+    },
+    "2023-07|%23摆烂%23|<=20": {
+      "population_count": 49,
+      "sample_count": 1
+    },
+    "2023-07|%23摆烂%23|21-60": {
+      "population_count": 68,
+      "sample_count": 1
+    },
+    "2023-07|%23躺平%23|>140": {
+      "population_count": 8512,
+      "sample_count": 2
+    },
+    "2023-07|%23躺平%23|61-140": {
+      "population_count": 330,
+      "sample_count": 1
+    },
+    "2023-07|佛系|61-140": {
+      "population_count": 5313,
+      "sample_count": 1
+    },
+    "2023-07|佛系|21-60": {
+      "population_count": 8011,
+      "sample_count": 1
+    },
+    "2023-07|佛系|<=20": {
+      "population_count": 2646,
+      "sample_count": 1
+    },
+    "2023-07|佛系|>140": {
+      "population_count": 4642,
+      "sample_count": 1
+    },
+    "2023-07|摆烂|61-140": {
+      "population_count": 15603,
+      "sample_count": 3
+    },
+    "2023-07|摆烂|21-60": {
+      "population_count": 28622,
+      "sample_count": 6
+    },
+    "2023-07|摆烂|<=20": {
+      "population_count": 19677,
+      "sample_count": 4
+    },
+    "2023-07|摆烂|>140": {
+      "population_count": 12112,
+      "sample_count": 2
+    },
+    "2023-07|躺平|61-140": {
+      "population_count": 8692,
+      "sample_count": 2
+    },
+    "2023-07|躺平|<=20": {
+      "population_count": 7666,
+      "sample_count": 1
+    },
+    "2023-07|躺平|21-60": {
+      "population_count": 13157,
+      "sample_count": 2
+    },
+    "2023-07|躺平|>140": {
+      "population_count": 543,
+      "sample_count": 1
+    },
+    "2023-07|%23摆烂%23|61-140": {
+      "population_count": 14,
+      "sample_count": 1
+    },
+    "2023-07|%23躺平%23|21-60": {
+      "population_count": 17,
+      "sample_count": 1
+    },
+    "2023-07|%23摆烂%23|>140": {
+      "population_count": 12,
+      "sample_count": 1
+    },
+    "2023-07|%23躺平%23|<=20": {
+      "population_count": 11,
+      "sample_count": 1
+    },
+    "2023-08|%23摆烂%23|21-60": {
+      "population_count": 66,
+      "sample_count": 1
+    },
+    "2023-08|%23躺平%23|>140": {
+      "population_count": 9440,
+      "sample_count": 2
+    },
+    "2023-08|%23躺平%23|61-140": {
+      "population_count": 315,
+      "sample_count": 1
+    },
+    "2023-08|%23躺平%23|21-60": {
+      "population_count": 23,
+      "sample_count": 1
+    },
+    "2023-08|佛系|21-60": {
+      "population_count": 8099,
+      "sample_count": 1
+    },
+    "2023-08|佛系|61-140": {
+      "population_count": 5507,
+      "sample_count": 1
+    },
+    "2023-08|佛系|>140": {
+      "population_count": 5024,
+      "sample_count": 1
+    },
+    "2023-08|佛系|<=20": {
+      "population_count": 2763,
+      "sample_count": 1
+    },
+    "2023-08|躺平|<=20": {
+      "population_count": 7865,
+      "sample_count": 1
+    },
+    "2023-08|躺平|21-60": {
+      "population_count": 14137,
+      "sample_count": 2
+    },
+    "2023-08|躺平|>140": {
+      "population_count": 630,
+      "sample_count": 1
+    },
+    "2023-08|躺平|61-140": {
+      "population_count": 9166,
+      "sample_count": 2
+    },
+    "2023-08|%23摆烂%23|<=20": {
+      "population_count": 40,
+      "sample_count": 1
+    },
+    "2023-08|%23摆烂%23|61-140": {
+      "population_count": 21,
+      "sample_count": 1
+    },
+    "2023-08|%23躺平%23|<=20": {
+      "population_count": 17,
+      "sample_count": 1
+    },
+    "2023-08|%23摆烂%23|>140": {
+      "population_count": 6,
+      "sample_count": 1
+    },
+    "2023-08|摆烂|<=20": {
+      "population_count": 11481,
+      "sample_count": 2
+    },
+    "2023-08|摆烂|21-60": {
+      "population_count": 17442,
+      "sample_count": 3
+    },
+    "2023-08|摆烂|>140": {
+      "population_count": 7581,
+      "sample_count": 1
+    },
+    "2023-08|摆烂|61-140": {
+      "population_count": 9850,
+      "sample_count": 2
+    },
+    "2023-09|%23摆烂%23|<=20": {
+      "population_count": 33,
+      "sample_count": 1
+    },
+    "2023-09|%23摆烂%23|21-60": {
+      "population_count": 71,
+      "sample_count": 1
+    },
+    "2023-09|%23躺平%23|>140": {
+      "population_count": 9280,
+      "sample_count": 2
+    },
+    "2023-09|%23躺平%23|61-140": {
+      "population_count": 319,
+      "sample_count": 1
+    },
+    "2023-09|%23躺平%23|21-60": {
+      "population_count": 27,
+      "sample_count": 1
+    },
+    "2023-09|佛系|21-60": {
+      "population_count": 6103,
+      "sample_count": 1
+    },
+    "2023-09|佛系|>140": {
+      "population_count": 4016,
+      "sample_count": 1
+    },
+    "2023-09|佛系|61-140": {
+      "population_count": 4212,
+      "sample_count": 1
+    },
+    "2023-09|佛系|<=20": {
+      "population_count": 2153,
+      "sample_count": 1
+    },
+    "2023-09|摆烂|61-140": {
+      "population_count": 14047,
+      "sample_count": 2
+    },
+    "2023-09|摆烂|21-60": {
+      "population_count": 24854,
+      "sample_count": 5
+    },
+    "2023-09|摆烂|<=20": {
+      "population_count": 16736,
+      "sample_count": 3
+    },
+    "2023-09|摆烂|>140": {
+      "population_count": 11576,
+      "sample_count": 2
+    },
+    "2023-09|躺平|21-60": {
+      "population_count": 12774,
+      "sample_count": 2
+    },
+    "2023-09|%23躺平%23|<=20": {
+      "population_count": 13,
+      "sample_count": 1
+    },
+    "2023-09|躺平|61-140": {
+      "population_count": 8012,
+      "sample_count": 1
+    },
+    "2023-09|躺平|<=20": {
+      "population_count": 7193,
+      "sample_count": 1
+    },
+    "2023-09|躺平|>140": {
+      "population_count": 490,
+      "sample_count": 1
+    },
+    "2023-09|%23摆烂%23|61-140": {
+      "population_count": 30,
+      "sample_count": 1
+    },
+    "2023-09|%23摆烂%23|>140": {
+      "population_count": 15,
+      "sample_count": 1
+    },
+    "2023-10|%23摆烂%23|61-140": {
+      "population_count": 22,
+      "sample_count": 1
+    },
+    "2023-10|%23摆烂%23|>140": {
+      "population_count": 6,
+      "sample_count": 1
+    },
+    "2023-10|%23躺平%23|>140": {
+      "population_count": 8966,
+      "sample_count": 2
+    },
+    "2023-10|%23躺平%23|61-140": {
+      "population_count": 317,
+      "sample_count": 1
+    },
+    "2023-10|%23躺平%23|<=20": {
+      "population_count": 13,
+      "sample_count": 1
+    },
+    "2023-10|佛系|61-140": {
+      "population_count": 4040,
+      "sample_count": 1
+    },
+    "2023-10|佛系|<=20": {
+      "population_count": 2087,
+      "sample_count": 1
+    },
+    "2023-10|佛系|21-60": {
+      "population_count": 5765,
+      "sample_count": 1
+    },
+    "2023-10|佛系|>140": {
+      "population_count": 3928,
+      "sample_count": 1
+    },
+    "2023-10|摆烂|<=20": {
+      "population_count": 15951,
+      "sample_count": 3
+    },
+    "2023-10|摆烂|21-60": {
+      "population_count": 24349,
+      "sample_count": 5
+    },
+    "2023-10|摆烂|>140": {
+      "population_count": 10266,
+      "sample_count": 2
+    },
+    "2023-10|摆烂|61-140": {
+      "population_count": 13774,
+      "sample_count": 2
+    },
+    "2023-10|躺平|21-60": {
+      "population_count": 14208,
+      "sample_count": 2
+    },
+    "2023-10|躺平|<=20": {
+      "population_count": 8183,
+      "sample_count": 1
+    },
+    "2023-10|躺平|61-140": {
+      "population_count": 8598,
+      "sample_count": 2
+    },
+    "2023-10|躺平|>140": {
+      "population_count": 662,
+      "sample_count": 1
+    },
+    "2023-10|%23摆烂%23|<=20": {
+      "population_count": 73,
+      "sample_count": 1
+    },
+    "2023-10|%23摆烂%23|21-60": {
+      "population_count": 86,
+      "sample_count": 1
+    },
+    "2023-10|%23躺平%23|21-60": {
+      "population_count": 20,
+      "sample_count": 1
+    },
+    "2023-11|%23摆烂%23|21-60": {
+      "population_count": 84,
+      "sample_count": 1
+    },
+    "2023-11|%23摆烂%23|<=20": {
+      "population_count": 66,
+      "sample_count": 1
+    },
+    "2023-11|%23躺平%23|>140": {
+      "population_count": 8317,
+      "sample_count": 1
+    },
+    "2023-11|%23躺平%23|61-140": {
+      "population_count": 321,
+      "sample_count": 1
+    },
+    "2023-11|佛系|<=20": {
+      "population_count": 1843,
+      "sample_count": 1
+    },
+    "2023-11|佛系|61-140": {
+      "population_count": 3864,
+      "sample_count": 1
+    },
+    "2023-11|佛系|21-60": {
+      "population_count": 5228,
+      "sample_count": 1
+    },
+    "2023-11|佛系|>140": {
+      "population_count": 3815,
+      "sample_count": 1
+    },
+    "2023-11|摆烂|61-140": {
+      "population_count": 11636,
+      "sample_count": 2
+    },
+    "2023-11|摆烂|<=20": {
+      "population_count": 13644,
+      "sample_count": 2
+    },
+    "2023-11|摆烂|>140": {
+      "population_count": 9624,
+      "sample_count": 2
+    },
+    "2023-11|摆烂|21-60": {
+      "population_count": 21604,
+      "sample_count": 4
+    },
+    "2023-11|躺平|<=20": {
+      "population_count": 6898,
+      "sample_count": 1
+    },
+    "2023-11|躺平|21-60": {
+      "population_count": 12441,
+      "sample_count": 2
+    },
+    "2023-11|躺平|61-140": {
+      "population_count": 7931,
+      "sample_count": 1
+    },
+    "2023-11|躺平|>140": {
+      "population_count": 717,
+      "sample_count": 1
+    },
+    "2023-11|%23躺平%23|<=20": {
+      "population_count": 8,
+      "sample_count": 1
+    },
+    "2023-11|%23摆烂%23|61-140": {
+      "population_count": 17,
+      "sample_count": 1
+    },
+    "2023-11|%23躺平%23|21-60": {
+      "population_count": 24,
+      "sample_count": 1
+    },
+    "2023-11|%23摆烂%23|>140": {
+      "population_count": 6,
+      "sample_count": 1
+    },
+    "2023-12|%23摆烂%23|<=20": {
+      "population_count": 51,
+      "sample_count": 1
+    },
+    "2023-12|%23摆烂%23|61-140": {
+      "population_count": 15,
+      "sample_count": 1
+    },
+    "2023-12|%23摆烂%23|21-60": {
+      "population_count": 77,
+      "sample_count": 1
+    },
+    "2023-12|%23躺平%23|>140": {
+      "population_count": 10003,
+      "sample_count": 2
+    },
+    "2023-12|%23躺平%23|61-140": {
+      "population_count": 296,
+      "sample_count": 1
+    },
+    "2023-12|佛系|21-60": {
+      "population_count": 5484,
+      "sample_count": 1
+    },
+    "2023-12|佛系|61-140": {
+      "population_count": 4747,
+      "sample_count": 1
+    },
+    "2023-12|佛系|>140": {
+      "population_count": 4267,
+      "sample_count": 1
+    },
+    "2023-12|佛系|<=20": {
+      "population_count": 1610,
+      "sample_count": 1
+    },
+    "2023-12|摆烂|21-60": {
+      "population_count": 18713,
+      "sample_count": 4
+    },
+    "2023-12|摆烂|>140": {
+      "population_count": 8321,
+      "sample_count": 1
+    },
+    "2023-12|摆烂|<=20": {
+      "population_count": 11374,
+      "sample_count": 2
+    },
+    "2023-12|摆烂|61-140": {
+      "population_count": 10987,
+      "sample_count": 2
+    },
+    "2023-12|躺平|21-60": {
+      "population_count": 13568,
+      "sample_count": 2
+    },
+    "2023-12|躺平|61-140": {
+      "population_count": 8848,
+      "sample_count": 2
+    },
+    "2023-12|躺平|>140": {
+      "population_count": 661,
+      "sample_count": 1
+    },
+    "2023-12|躺平|<=20": {
+      "population_count": 6444,
+      "sample_count": 1
+    },
+    "2023-12|%23躺平%23|21-60": {
+      "population_count": 24,
+      "sample_count": 1
+    },
+    "2023-12|%23躺平%23|<=20": {
+      "population_count": 17,
+      "sample_count": 1
+    },
+    "2023-12|%23摆烂%23|>140": {
+      "population_count": 7,
+      "sample_count": 1
+    },
+    "2024-01|%23躺平%23|>140": {
+      "population_count": 9865,
+      "sample_count": 2
+    },
+    "2024-01|%23躺平%23|61-140": {
+      "population_count": 268,
+      "sample_count": 1
+    },
+    "2024-01|%23躺平%23|<=20": {
+      "population_count": 17,
+      "sample_count": 1
+    },
+    "2024-01|佛系|>140": {
+      "population_count": 4156,
+      "sample_count": 1
+    },
+    "2024-01|佛系|61-140": {
+      "population_count": 3960,
+      "sample_count": 1
+    },
+    "2024-01|佛系|<=20": {
+      "population_count": 1642,
+      "sample_count": 1
+    },
+    "2024-01|佛系|21-60": {
+      "population_count": 5007,
+      "sample_count": 1
+    },
+    "2024-01|摆烂|>140": {
+      "population_count": 5119,
+      "sample_count": 1
+    },
+    "2024-01|摆烂|61-140": {
+      "population_count": 6355,
+      "sample_count": 1
+    },
+    "2024-01|摆烂|21-60": {
+      "population_count": 10378,
+      "sample_count": 2
+    },
+    "2024-01|躺平|21-60": {
+      "population_count": 2,
+      "sample_count": 1
+    },
+    "2024-01|%23摆烂%23|21-60": {
+      "population_count": 61,
+      "sample_count": 1
+    },
+    "2024-01|%23摆烂%23|<=20": {
+      "population_count": 33,
+      "sample_count": 1
+    },
+    "2024-01|%23摆烂%23|61-140": {
+      "population_count": 16,
+      "sample_count": 1
+    },
+    "2024-01|%23躺平%23|21-60": {
+      "population_count": 22,
+      "sample_count": 1
+    },
+    "2024-01|%23摆烂%23|>140": {
+      "population_count": 11,
+      "sample_count": 1
+    },
+    "2024-01|摆烂|<=20": {
+      "population_count": 6488,
+      "sample_count": 1
+    },
+    "2024-02|%23摆烂%23|<=20": {
+      "population_count": 32,
+      "sample_count": 1
+    },
+    "2024-02|%23摆烂%23|21-60": {
+      "population_count": 43,
+      "sample_count": 1
+    },
+    "2024-02|%23摆烂%23|61-140": {
+      "population_count": 12,
+      "sample_count": 1
+    },
+    "2024-02|%23躺平%23|>140": {
+      "population_count": 9085,
+      "sample_count": 2
+    },
+    "2024-02|%23躺平%23|61-140": {
+      "population_count": 290,
+      "sample_count": 1
+    },
+    "2024-02|%23躺平%23|21-60": {
+      "population_count": 22,
+      "sample_count": 1
+    },
+    "2024-02|佛系|21-60": {
+      "population_count": 4788,
+      "sample_count": 1
+    },
+    "2024-02|佛系|61-140": {
+      "population_count": 3504,
+      "sample_count": 1
+    },
+    "2024-02|佛系|>140": {
+      "population_count": 3963,
+      "sample_count": 1
+    },
+    "2024-02|佛系|<=20": {
+      "population_count": 1565,
+      "sample_count": 1
+    },
+    "2024-02|摆烂|>140": {
+      "population_count": 9108,
+      "sample_count": 2
+    },
+    "2024-02|摆烂|<=20": {
+      "population_count": 9885,
+      "sample_count": 2
+    },
+    "2024-02|摆烂|21-60": {
+      "population_count": 16903,
+      "sample_count": 3
+    },
+    "2024-02|摆烂|61-140": {
+      "population_count": 10107,
+      "sample_count": 2
+    },
+    "2024-02|躺平|61-140": {
+      "population_count": 7946,
+      "sample_count": 1
+    },
+    "2024-02|躺平|21-60": {
+      "population_count": 11281,
+      "sample_count": 2
+    },
+    "2024-02|躺平|<=20": {
+      "population_count": 5949,
+      "sample_count": 1
+    },
+    "2024-02|躺平|>140": {
+      "population_count": 622,
+      "sample_count": 1
+    },
+    "2024-02|%23摆烂%23|>140": {
+      "population_count": 12,
+      "sample_count": 1
+    },
+    "2024-02|%23躺平%23|<=20": {
+      "population_count": 8,
+      "sample_count": 1
+    },
+    "2024-03|%23摆烂%23|>140": {
+      "population_count": 6,
+      "sample_count": 1
+    },
+    "2024-03|%23摆烂%23|61-140": {
+      "population_count": 17,
+      "sample_count": 1
+    },
+    "2024-03|%23躺平%23|>140": {
+      "population_count": 10166,
+      "sample_count": 2
+    },
+    "2024-03|%23躺平%23|61-140": {
+      "population_count": 294,
+      "sample_count": 1
+    },
+    "2024-03|%23躺平%23|21-60": {
+      "population_count": 27,
+      "sample_count": 1
+    },
+    "2024-03|%23躺平%23|<=20": {
+      "population_count": 14,
+      "sample_count": 1
+    },
+    "2024-03|佛系|21-60": {
+      "population_count": 5697,
+      "sample_count": 1
+    },
+    "2024-03|佛系|61-140": {
+      "population_count": 4265,
+      "sample_count": 1
+    },
+    "2024-03|佛系|>140": {
+      "population_count": 4640,
+      "sample_count": 1
+    },
+    "2024-03|佛系|<=20": {
+      "population_count": 1919,
+      "sample_count": 1
+    },
+    "2024-03|摆烂|>140": {
+      "population_count": 11292,
+      "sample_count": 2
+    },
+    "2024-03|摆烂|61-140": {
+      "population_count": 12026,
+      "sample_count": 2
+    },
+    "2024-03|摆烂|21-60": {
+      "population_count": 21521,
+      "sample_count": 4
+    },
+    "2024-03|摆烂|<=20": {
+      "population_count": 13927,
+      "sample_count": 2
+    },
+    "2024-03|躺平|61-140": {
+      "population_count": 8880,
+      "sample_count": 2
+    },
+    "2024-03|躺平|21-60": {
+      "population_count": 13294,
+      "sample_count": 2
+    },
+    "2024-03|躺平|<=20": {
+      "population_count": 7120,
+      "sample_count": 1
+    },
+    "2024-03|躺平|>140": {
+      "population_count": 892,
+      "sample_count": 1
+    },
+    "2024-03|%23摆烂%23|21-60": {
+      "population_count": 60,
+      "sample_count": 1
+    },
+    "2024-03|%23摆烂%23|<=20": {
+      "population_count": 43,
+      "sample_count": 1
+    },
+    "2024-04|%23摆烂%23|21-60": {
+      "population_count": 33,
+      "sample_count": 1
+    },
+    "2024-04|%23摆烂%23|<=20": {
+      "population_count": 29,
+      "sample_count": 1
+    },
+    "2024-04|%23躺平%23|61-140": {
+      "population_count": 308,
+      "sample_count": 1
+    },
+    "2024-04|%23躺平%23|>140": {
+      "population_count": 10356,
+      "sample_count": 2
+    },
+    "2024-04|%23躺平%23|21-60": {
+      "population_count": 33,
+      "sample_count": 1
+    },
+    "2024-04|佛系|21-60": {
+      "population_count": 5727,
+      "sample_count": 1
+    },
+    "2024-04|佛系|<=20": {
+      "population_count": 1902,
+      "sample_count": 1
+    },
+    "2024-04|佛系|61-140": {
+      "population_count": 4374,
+      "sample_count": 1
+    },
+    "2024-04|佛系|>140": {
+      "population_count": 5085,
+      "sample_count": 1
+    },
+    "2024-04|摆烂|>140": {
+      "population_count": 11468,
+      "sample_count": 2
+    },
+    "2024-04|摆烂|61-140": {
+      "population_count": 11306,
+      "sample_count": 2
+    },
+    "2024-04|摆烂|<=20": {
+      "population_count": 12465,
+      "sample_count": 2
+    },
+    "2024-04|摆烂|21-60": {
+      "population_count": 19680,
+      "sample_count": 4
+    },
+    "2024-04|躺平|61-140": {
+      "population_count": 8348,
+      "sample_count": 1
+    },
+    "2024-04|躺平|21-60": {
+      "population_count": 12347,
+      "sample_count": 2
+    },
+    "2024-04|躺平|<=20": {
+      "population_count": 6691,
+      "sample_count": 1
+    },
+    "2024-04|躺平|>140": {
+      "population_count": 843,
+      "sample_count": 1
+    },
+    "2024-04|%23摆烂%23|>140": {
+      "population_count": 15,
+      "sample_count": 1
+    },
+    "2024-04|%23躺平%23|<=20": {
+      "population_count": 14,
+      "sample_count": 1
+    },
+    "2024-04|%23摆烂%23|61-140": {
+      "population_count": 5,
+      "sample_count": 1
+    },
+    "2024-05|%23摆烂%23|<=20": {
+      "population_count": 33,
+      "sample_count": 1
+    },
+    "2024-05|%23摆烂%23|21-60": {
+      "population_count": 45,
+      "sample_count": 1
+    },
+    "2024-05|%23躺平%23|>140": {
+      "population_count": 11198,
+      "sample_count": 2
+    },
+    "2024-05|%23躺平%23|61-140": {
+      "population_count": 284,
+      "sample_count": 1
+    },
+    "2024-05|%23躺平%23|21-60": {
+      "population_count": 25,
+      "sample_count": 1
+    },
+    "2024-05|佛系|21-60": {
+      "population_count": 5777,
+      "sample_count": 1
+    },
+    "2024-05|佛系|>140": {
+      "population_count": 5059,
+      "sample_count": 1
+    },
+    "2024-05|佛系|61-140": {
+      "population_count": 4423,
+      "sample_count": 1
+    },
+    "2024-05|佛系|<=20": {
+      "population_count": 1850,
+      "sample_count": 1
+    },
+    "2024-05|摆烂|>140": {
+      "population_count": 10466,
+      "sample_count": 2
+    },
+    "2024-05|摆烂|<=20": {
+      "population_count": 10296,
+      "sample_count": 2
+    },
+    "2024-05|摆烂|61-140": {
+      "population_count": 9785,
+      "sample_count": 2
+    },
+    "2024-05|摆烂|21-60": {
+      "population_count": 16379,
+      "sample_count": 3
+    },
+    "2024-05|躺平|<=20": {
+      "population_count": 7837,
+      "sample_count": 1
+    },
+    "2024-05|躺平|21-60": {
+      "population_count": 13797,
+      "sample_count": 2
+    },
+    "2024-05|躺平|61-140": {
+      "population_count": 9535,
+      "sample_count": 2
+    },
+    "2024-05|躺平|>140": {
+      "population_count": 1016,
+      "sample_count": 1
+    },
+    "2024-05|%23躺平%23|<=20": {
+      "population_count": 14,
+      "sample_count": 1
+    },
+    "2024-05|%23摆烂%23|61-140": {
+      "population_count": 9,
+      "sample_count": 1
+    },
+    "2024-05|%23摆烂%23|>140": {
+      "population_count": 9,
+      "sample_count": 1
+    },
+    "2024-06|%23摆烂%23|21-60": {
+      "population_count": 40,
+      "sample_count": 1
+    },
+    "2024-06|%23摆烂%23|<=20": {
+      "population_count": 23,
+      "sample_count": 1
+    },
+    "2024-06|%23摆烂%23|61-140": {
+      "population_count": 12,
+      "sample_count": 1
+    },
+    "2024-06|%23躺平%23|>140": {
+      "population_count": 10090,
+      "sample_count": 2
+    },
+    "2024-06|%23躺平%23|61-140": {
+      "population_count": 307,
+      "sample_count": 1
+    },
+    "2024-06|%23躺平%23|21-60": {
+      "population_count": 32,
+      "sample_count": 1
+    },
+    "2024-06|佛系|>140": {
+      "population_count": 4423,
+      "sample_count": 1
+    },
+    "2024-06|佛系|<=20": {
+      "population_count": 1733,
+      "sample_count": 1
+    },
+    "2024-06|佛系|61-140": {
+      "population_count": 4083,
+      "sample_count": 1
+    },
+    "2024-06|佛系|21-60": {
+      "population_count": 5165,
+      "sample_count": 1
+    },
+    "2024-06|摆烂|>140": {
+      "population_count": 10300,
+      "sample_count": 2
+    },
+    "2024-06|摆烂|21-60": {
+      "population_count": 17144,
+      "sample_count": 3
+    },
+    "2024-06|摆烂|<=20": {
+      "population_count": 11071,
+      "sample_count": 2
+    },
+    "2024-06|摆烂|61-140": {
+      "population_count": 10138,
+      "sample_count": 2
+    },
+    "2024-06|躺平|<=20": {
+      "population_count": 4607,
+      "sample_count": 1
+    },
+    "2024-06|躺平|61-140": {
+      "population_count": 5512,
+      "sample_count": 1
+    },
+    "2024-06|躺平|21-60": {
+      "population_count": 8480,
+      "sample_count": 2
+    },
+    "2024-06|躺平|>140": {
+      "population_count": 524,
+      "sample_count": 1
+    },
+    "2024-06|%23摆烂%23|>140": {
+      "population_count": 14,
+      "sample_count": 1
+    },
+    "2024-06|%23躺平%23|<=20": {
+      "population_count": 13,
+      "sample_count": 1
+    },
+    "2024-07|%23摆烂%23|21-60": {
+      "population_count": 34,
+      "sample_count": 1
+    },
+    "2024-07|%23躺平%23|>140": {
+      "population_count": 8682,
+      "sample_count": 2
+    },
+    "2024-07|%23躺平%23|61-140": {
+      "population_count": 321,
+      "sample_count": 1
+    },
+    "2024-07|%23躺平%23|21-60": {
+      "population_count": 46,
+      "sample_count": 1
+    },
+    "2024-07|佛系|61-140": {
+      "population_count": 3687,
+      "sample_count": 1
+    },
+    "2024-07|佛系|>140": {
+      "population_count": 4188,
+      "sample_count": 1
+    },
+    "2024-07|佛系|21-60": {
+      "population_count": 4523,
+      "sample_count": 1
+    },
+    "2024-07|佛系|<=20": {
+      "population_count": 1553,
+      "sample_count": 1
+    },
+    "2024-07|摆烂|21-60": {
+      "population_count": 15808,
+      "sample_count": 3
+    },
+    "2024-07|摆烂|>140": {
+      "population_count": 9897,
+      "sample_count": 2
+    },
+    "2024-07|摆烂|61-140": {
+      "population_count": 10365,
+      "sample_count": 2
+    },
+    "2024-07|摆烂|<=20": {
+      "population_count": 9780,
+      "sample_count": 2
+    },
+    "2024-07|躺平|21-60": {
+      "population_count": 13241,
+      "sample_count": 2
+    },
+    "2024-07|躺平|61-140": {
+      "population_count": 9191,
+      "sample_count": 2
+    },
+    "2024-07|躺平|<=20": {
+      "population_count": 7328,
+      "sample_count": 1
+    },
+    "2024-07|躺平|>140": {
+      "population_count": 2347,
+      "sample_count": 1
+    },
+    "2024-07|%23摆烂%23|<=20": {
+      "population_count": 20,
+      "sample_count": 1
+    },
+    "2024-07|%23摆烂%23|>140": {
+      "population_count": 9,
+      "sample_count": 1
+    },
+    "2024-07|%23摆烂%23|61-140": {
+      "population_count": 8,
+      "sample_count": 1
+    },
+    "2024-07|%23躺平%23|<=20": {
+      "population_count": 17,
+      "sample_count": 1
+    },
+    "2024-08|%23摆烂%23|<=20": {
+      "population_count": 87,
+      "sample_count": 1
+    },
+    "2024-08|%23摆烂%23|21-60": {
+      "population_count": 211,
+      "sample_count": 1
+    },
+    "2024-08|%23躺平%23|>140": {
+      "population_count": 5759,
+      "sample_count": 1
+    },
+    "2024-08|%23躺平%23|61-140": {
+      "population_count": 190,
+      "sample_count": 1
+    },
+    "2024-08|%23躺平%23|21-60": {
+      "population_count": 36,
+      "sample_count": 1
+    },
+    "2024-08|佛系|21-60": {
+      "population_count": 5614,
+      "sample_count": 1
+    },
+    "2024-08|佛系|61-140": {
+      "population_count": 4180,
+      "sample_count": 1
+    },
+    "2024-08|佛系|>140": {
+      "population_count": 4051,
+      "sample_count": 1
+    },
+    "2024-08|佛系|<=20": {
+      "population_count": 2000,
+      "sample_count": 1
+    },
+    "2024-08|摆烂|>140": {
+      "population_count": 8939,
+      "sample_count": 2
+    },
+    "2024-08|摆烂|61-140": {
+      "population_count": 11414,
+      "sample_count": 2
+    },
+    "2024-08|摆烂|21-60": {
+      "population_count": 17209,
+      "sample_count": 3
+    },
+    "2024-08|摆烂|<=20": {
+      "population_count": 9723,
+      "sample_count": 2
+    },
+    "2024-08|躺平|>140": {
+      "population_count": 4399,
+      "sample_count": 1
+    },
+    "2024-08|躺平|<=20": {
+      "population_count": 10799,
+      "sample_count": 2
+    },
+    "2024-08|躺平|61-140": {
+      "population_count": 9923,
+      "sample_count": 2
+    },
+    "2024-08|躺平|21-60": {
+      "population_count": 15914,
+      "sample_count": 3
+    },
+    "2024-08|%23躺平%23|<=20": {
+      "population_count": 13,
+      "sample_count": 1
+    },
+    "2024-08|%23摆烂%23|>140": {
+      "population_count": 13,
+      "sample_count": 1
+    },
+    "2024-08|%23摆烂%23|61-140": {
+      "population_count": 63,
+      "sample_count": 1
+    },
+    "2024-09|%23摆烂%23|21-60": {
+      "population_count": 50,
+      "sample_count": 1
+    },
+    "2024-09|%23摆烂%23|<=20": {
+      "population_count": 35,
+      "sample_count": 1
+    },
+    "2024-09|%23躺平%23|>140": {
+      "population_count": 5816,
+      "sample_count": 1
+    },
+    "2024-09|%23躺平%23|61-140": {
+      "population_count": 194,
+      "sample_count": 1
+    },
+    "2024-09|%23躺平%23|21-60": {
+      "population_count": 17,
+      "sample_count": 1
+    },
+    "2024-09|佛系|61-140": {
+      "population_count": 3657,
+      "sample_count": 1
+    },
+    "2024-09|佛系|21-60": {
+      "population_count": 4713,
+      "sample_count": 1
+    },
+    "2024-09|佛系|<=20": {
+      "population_count": 1521,
+      "sample_count": 1
+    },
+    "2024-09|佛系|>140": {
+      "population_count": 3510,
+      "sample_count": 1
+    },
+    "2024-09|摆烂|61-140": {
+      "population_count": 9724,
+      "sample_count": 2
+    },
+    "2024-09|摆烂|21-60": {
+      "population_count": 15413,
+      "sample_count": 3
+    },
+    "2024-09|摆烂|>140": {
+      "population_count": 10322,
+      "sample_count": 2
+    },
+    "2024-09|摆烂|<=20": {
+      "population_count": 9253,
+      "sample_count": 2
+    },
+    "2024-09|躺平|21-60": {
+      "population_count": 13128,
+      "sample_count": 2
+    },
+    "2024-09|躺平|61-140": {
+      "population_count": 9139,
+      "sample_count": 2
+    },
+    "2024-09|躺平|<=20": {
+      "population_count": 7105,
+      "sample_count": 1
+    },
+    "2024-09|躺平|>140": {
+      "population_count": 3299,
+      "sample_count": 1
+    },
+    "2024-09|%23摆烂%23|>140": {
+      "population_count": 5,
+      "sample_count": 1
+    },
+    "2024-09|%23躺平%23|<=20": {
+      "population_count": 10,
+      "sample_count": 1
+    },
+    "2024-09|%23摆烂%23|61-140": {
+      "population_count": 10,
+      "sample_count": 1
+    },
+    "2024-10|%23摆烂%23|61-140": {
+      "population_count": 17,
+      "sample_count": 1
+    },
+    "2024-10|%23摆烂%23|21-60": {
+      "population_count": 59,
+      "sample_count": 1
+    },
+    "2024-10|%23躺平%23|>140": {
+      "population_count": 6509,
+      "sample_count": 1
+    },
+    "2024-10|%23躺平%23|61-140": {
+      "population_count": 226,
+      "sample_count": 1
+    },
+    "2024-10|佛系|61-140": {
+      "population_count": 3333,
+      "sample_count": 1
+    },
+    "2024-10|佛系|<=20": {
+      "population_count": 1350,
+      "sample_count": 1
+    },
+    "2024-10|佛系|21-60": {
+      "population_count": 4308,
+      "sample_count": 1
+    },
+    "2024-10|佛系|>140": {
+      "population_count": 3140,
+      "sample_count": 1
+    },
+    "2024-10|摆烂|>140": {
+      "population_count": 11338,
+      "sample_count": 2
+    },
+    "2024-10|摆烂|<=20": {
+      "population_count": 8632,
+      "sample_count": 2
+    },
+    "2024-10|摆烂|21-60": {
+      "population_count": 14334,
+      "sample_count": 2
+    },
+    "2024-10|摆烂|61-140": {
+      "population_count": 8768,
+      "sample_count": 2
+    },
+    "2024-10|躺平|21-60": {
+      "population_count": 11441,
+      "sample_count": 2
+    },
+    "2024-10|躺平|61-140": {
+      "population_count": 7608,
+      "sample_count": 1
+    },
+    "2024-10|躺平|>140": {
+      "population_count": 1363,
+      "sample_count": 1
+    },
+    "2024-10|躺平|<=20": {
+      "population_count": 6663,
+      "sample_count": 1
+    },
+    "2024-10|%23摆烂%23|<=20": {
+      "population_count": 40,
+      "sample_count": 1
+    },
+    "2024-10|%23躺平%23|<=20": {
+      "population_count": 18,
+      "sample_count": 1
+    },
+    "2024-10|%23躺平%23|21-60": {
+      "population_count": 20,
+      "sample_count": 1
+    },
+    "2024-10|%23摆烂%23|>140": {
+      "population_count": 2,
+      "sample_count": 1
+    },
+    "2024-11|%23摆烂%23|<=20": {
+      "population_count": 32,
+      "sample_count": 1
+    },
+    "2024-11|%23摆烂%23|21-60": {
+      "population_count": 54,
+      "sample_count": 1
+    },
+    "2024-11|%23躺平%23|>140": {
+      "population_count": 6787,
+      "sample_count": 1
+    },
+    "2024-11|%23躺平%23|61-140": {
+      "population_count": 220,
+      "sample_count": 1
+    },
+    "2024-11|%23躺平%23|21-60": {
+      "population_count": 20,
+      "sample_count": 1
+    },
+    "2024-11|佛系|21-60": {
+      "population_count": 3998,
+      "sample_count": 1
+    },
+    "2024-11|佛系|61-140": {
+      "population_count": 3125,
+      "sample_count": 1
+    },
+    "2024-11|佛系|>140": {
+      "population_count": 3409,
+      "sample_count": 1
+    },
+    "2024-11|佛系|<=20": {
+      "population_count": 1374,
+      "sample_count": 1
+    },
+    "2024-11|摆烂|<=20": {
+      "population_count": 7860,
+      "sample_count": 1
+    },
+    "2024-11|摆烂|61-140": {
+      "population_count": 8272,
+      "sample_count": 1
+    },
+    "2024-11|摆烂|>140": {
+      "population_count": 12311,
+      "sample_count": 2
+    },
+    "2024-11|摆烂|21-60": {
+      "population_count": 12998,
+      "sample_count": 2
+    },
+    "2024-11|躺平|21-60": {
+      "population_count": 10079,
+      "sample_count": 2
+    },
+    "2024-11|躺平|>140": {
+      "population_count": 1671,
+      "sample_count": 1
+    },
+    "2024-11|躺平|61-140": {
+      "population_count": 7277,
+      "sample_count": 1
+    },
+    "2024-11|躺平|<=20": {
+      "population_count": 5711,
+      "sample_count": 1
+    },
+    "2024-11|%23摆烂%23|>140": {
+      "population_count": 5,
+      "sample_count": 1
+    },
+    "2024-11|%23躺平%23|<=20": {
+      "population_count": 7,
+      "sample_count": 1
+    },
+    "2024-11|%23摆烂%23|61-140": {
+      "population_count": 11,
+      "sample_count": 1
+    },
+    "2024-12|%23躺平%23|>140": {
+      "population_count": 6393,
+      "sample_count": 1
+    },
+    "2024-12|%23躺平%23|61-140": {
+      "population_count": 168,
+      "sample_count": 1
+    },
+    "2024-12|佛系|<=20": {
+      "population_count": 928,
+      "sample_count": 1
+    },
+    "2024-12|佛系|>140": {
+      "population_count": 3463,
+      "sample_count": 1
+    },
+    "2024-12|佛系|61-140": {
+      "population_count": 2773,
+      "sample_count": 1
+    },
+    "2024-12|佛系|21-60": {
+      "population_count": 3238,
+      "sample_count": 1
+    },
+    "2024-12|摆烂|61-140": {
+      "population_count": 322,
+      "sample_count": 1
+    },
+    "2024-12|摆烂|>140": {
+      "population_count": 408,
+      "sample_count": 1
+    },
+    "2024-12|躺平|21-60": {
+      "population_count": 8853,
+      "sample_count": 2
+    },
+    "2024-12|躺平|<=20": {
+      "population_count": 4579,
+      "sample_count": 1
+    },
+    "2024-12|躺平|61-140": {
+      "population_count": 7489,
+      "sample_count": 1
+    },
+    "2024-12|躺平|>140": {
+      "population_count": 3106,
+      "sample_count": 1
+    },
+    "2024-12|%23摆烂%23|61-140": {
+      "population_count": 9,
+      "sample_count": 1
+    },
+    "2024-12|%23摆烂%23|21-60": {
+      "population_count": 39,
+      "sample_count": 1
+    },
+    "2024-12|%23摆烂%23|>140": {
+      "population_count": 50,
+      "sample_count": 1
+    },
+    "2024-12|%23躺平%23|21-60": {
+      "population_count": 17,
+      "sample_count": 1
+    },
+    "2024-12|%23摆烂%23|<=20": {
+      "population_count": 22,
+      "sample_count": 1
+    },
+    "2024-12|%23躺平%23|<=20": {
+      "population_count": 9,
+      "sample_count": 1
+    },
+    "2024-12|摆烂|21-60": {
+      "population_count": 351,
+      "sample_count": 1
+    },
+    "2024-12|摆烂|<=20": {
+      "population_count": 128,
+      "sample_count": 1
+    },
+    "2025-01|%23摆烂%23|>140": {
+      "population_count": 21,
+      "sample_count": 1
+    },
+    "2025-01|%23躺平%23|>140": {
+      "population_count": 5255,
+      "sample_count": 1
+    },
+    "2025-01|%23躺平%23|61-140": {
+      "population_count": 137,
+      "sample_count": 1
+    },
+    "2025-01|%23躺平%23|21-60": {
+      "population_count": 24,
+      "sample_count": 1
+    },
+    "2025-01|佛系|61-140": {
+      "population_count": 2975,
+      "sample_count": 1
+    },
+    "2025-01|佛系|21-60": {
+      "population_count": 3648,
+      "sample_count": 1
+    },
+    "2025-01|佛系|>140": {
+      "population_count": 3364,
+      "sample_count": 1
+    },
+    "2025-01|佛系|<=20": {
+      "population_count": 1157,
+      "sample_count": 1
+    },
+    "2025-01|摆烂|>140": {
+      "population_count": 7609,
+      "sample_count": 1
+    },
+    "2025-01|摆烂|61-140": {
+      "population_count": 6333,
+      "sample_count": 1
+    },
+    "2025-01|摆烂|21-60": {
+      "population_count": 9228,
+      "sample_count": 2
+    },
+    "2025-01|摆烂|<=20": {
+      "population_count": 5314,
+      "sample_count": 1
+    },
+    "2025-01|躺平|21-60": {
+      "population_count": 8743,
+      "sample_count": 2
+    },
+    "2025-01|躺平|61-140": {
+      "population_count": 7032,
+      "sample_count": 1
+    },
+    "2025-01|躺平|<=20": {
+      "population_count": 4790,
+      "sample_count": 1
+    },
+    "2025-01|躺平|>140": {
+      "population_count": 3197,
+      "sample_count": 1
+    },
+    "2025-01|%23佛系%23|21-60": {
+      "population_count": 3,
+      "sample_count": 1
+    },
+    "2025-01|%23摆烂%23|<=20": {
+      "population_count": 15,
+      "sample_count": 1
+    },
+    "2025-01|%23躺平%23|<=20": {
+      "population_count": 6,
+      "sample_count": 1
+    },
+    "2025-01|%23摆烂%23|21-60": {
+      "population_count": 25,
+      "sample_count": 1
+    },
+    "2025-01|%23佛系%23|61-140": {
+      "population_count": 3,
+      "sample_count": 1
+    },
+    "2025-01|%23佛系%23|<=20": {
+      "population_count": 2,
+      "sample_count": 1
+    },
+    "2025-01|%23摆烂%23|61-140": {
+      "population_count": 8,
+      "sample_count": 1
+    },
+    "2025-01|%23佛系%23|>140": {
+      "population_count": 1,
+      "sample_count": 1
+    },
+    "2025-02|%23摆烂%23|>140": {
+      "population_count": 19,
+      "sample_count": 1
+    },
+    "2025-02|%23摆烂%23|21-60": {
+      "population_count": 46,
+      "sample_count": 1
+    },
+    "2025-02|%23躺平%23|>140": {
+      "population_count": 5906,
+      "sample_count": 1
+    },
+    "2025-02|%23躺平%23|61-140": {
+      "population_count": 213,
+      "sample_count": 1
+    },
+    "2025-02|%23躺平%23|21-60": {
+      "population_count": 26,
+      "sample_count": 1
+    },
+    "2025-02|佛系|>140": {
+      "population_count": 3295,
+      "sample_count": 1
+    },
+    "2025-02|佛系|61-140": {
+      "population_count": 2926,
+      "sample_count": 1
+    },
+    "2025-02|佛系|<=20": {
+      "population_count": 1146,
+      "sample_count": 1
+    },
+    "2025-02|佛系|21-60": {
+      "population_count": 3591,
+      "sample_count": 1
+    },
+    "2025-02|躺平|21-60": {
+      "population_count": 9538,
+      "sample_count": 2
+    },
+    "2025-02|躺平|61-140": {
+      "population_count": 7078,
+      "sample_count": 1
+    },
+    "2025-02|躺平|>140": {
+      "population_count": 2542,
+      "sample_count": 1
+    },
+    "2025-02|躺平|<=20": {
+      "population_count": 5259,
+      "sample_count": 1
+    },
+    "2025-02|%23摆烂%23|61-140": {
+      "population_count": 9,
+      "sample_count": 1
+    },
+    "2025-02|%23摆烂%23|<=20": {
+      "population_count": 26,
+      "sample_count": 1
+    },
+    "2025-02|%23躺平%23|<=20": {
+      "population_count": 7,
+      "sample_count": 1
+    },
+    "2025-02|%23佛系%23|<=20": {
+      "population_count": 1,
+      "sample_count": 1
+    },
+    "2025-02|%23佛系%23|>140": {
+      "population_count": 2,
+      "sample_count": 1
+    },
+    "2025-02|%23佛系%23|21-60": {
+      "population_count": 5,
+      "sample_count": 1
+    },
+    "2025-02|摆烂|<=20": {
+      "population_count": 3880,
+      "sample_count": 1
+    },
+    "2025-02|摆烂|61-140": {
+      "population_count": 4326,
+      "sample_count": 1
+    },
+    "2025-02|摆烂|>140": {
+      "population_count": 5789,
+      "sample_count": 1
+    },
+    "2025-02|摆烂|21-60": {
+      "population_count": 6648,
+      "sample_count": 1
+    },
+    "2025-02|%23佛系%23|61-140": {
+      "population_count": 4,
+      "sample_count": 1
+    },
+    "2025-03|%23摆烂%23|<=20": {
+      "population_count": 43,
+      "sample_count": 1
+    },
+    "2025-03|%23摆烂%23|61-140": {
+      "population_count": 20,
+      "sample_count": 1
+    },
+    "2025-03|%23躺平%23|>140": {
+      "population_count": 7787,
+      "sample_count": 1
+    },
+    "2025-03|%23躺平%23|61-140": {
+      "population_count": 191,
+      "sample_count": 1
+    },
+    "2025-03|佛系|>140": {
+      "population_count": 3979,
+      "sample_count": 1
+    },
+    "2025-03|佛系|61-140": {
+      "population_count": 3444,
+      "sample_count": 1
+    },
+    "2025-03|佛系|21-60": {
+      "population_count": 4232,
+      "sample_count": 1
+    },
+    "2025-03|佛系|<=20": {
+      "population_count": 1496,
+      "sample_count": 1
+    },
+    "2025-03|摆烂|>140": {
+      "population_count": 10692,
+      "sample_count": 2
+    },
+    "2025-03|摆烂|21-60": {
+      "population_count": 12564,
+      "sample_count": 2
+    },
+    "2025-03|摆烂|<=20": {
+      "population_count": 7495,
+      "sample_count": 1
+    },
+    "2025-03|摆烂|61-140": {
+      "population_count": 9153,
+      "sample_count": 2
+    },
+    "2025-03|躺平|21-60": {
+      "population_count": 10792,
+      "sample_count": 2
+    },
+    "2025-03|躺平|61-140": {
+      "population_count": 7980,
+      "sample_count": 1
+    },
+    "2025-03|躺平|<=20": {
+      "population_count": 6028,
+      "sample_count": 1
+    },
+    "2025-03|躺平|>140": {
+      "population_count": 2962,
+      "sample_count": 1
+    },
+    "2025-03|%23佛系%23|61-140": {
+      "population_count": 1,
+      "sample_count": 1
+    },
+    "2025-03|%23摆烂%23|21-60": {
+      "population_count": 65,
+      "sample_count": 1
+    },
+    "2025-03|%23躺平%23|<=20": {
+      "population_count": 11,
+      "sample_count": 1
+    },
+    "2025-03|%23躺平%23|21-60": {
+      "population_count": 25,
+      "sample_count": 1
+    },
+    "2025-03|%23佛系%23|21-60": {
+      "population_count": 2,
+      "sample_count": 1
+    },
+    "2025-03|%23摆烂%23|>140": {
+      "population_count": 19,
+      "sample_count": 1
+    },
+    "2025-03|%23佛系%23|<=20": {
+      "population_count": 3,
+      "sample_count": 1
+    },
+    "2025-03|%23佛系%23|>140": {
+      "population_count": 2,
+      "sample_count": 1
+    },
+    "2025-04|%23佛系%23|21-60": {
+      "population_count": 7,
+      "sample_count": 1
+    },
+    "2025-04|%23摆烂%23|21-60": {
+      "population_count": 48,
+      "sample_count": 1
+    },
+    "2025-04|%23摆烂%23|>140": {
+      "population_count": 15,
+      "sample_count": 1
+    },
+    "2025-04|%23摆烂%23|61-140": {
+      "population_count": 18,
+      "sample_count": 1
+    },
+    "2025-04|%23摆烂%23|<=20": {
+      "population_count": 24,
+      "sample_count": 1
+    },
+    "2025-04|%23躺平%23|>140": {
+      "population_count": 7620,
+      "sample_count": 1
+    },
+    "2025-04|%23躺平%23|61-140": {
+      "population_count": 228,
+      "sample_count": 1
+    },
+    "2025-04|%23躺平%23|21-60": {
+      "population_count": 33,
+      "sample_count": 1
+    },
+    "2025-04|佛系|21-60": {
+      "population_count": 3811,
+      "sample_count": 1
+    },
+    "2025-04|佛系|>140": {
+      "population_count": 3933,
+      "sample_count": 1
+    },
+    "2025-04|佛系|61-140": {
+      "population_count": 3245,
+      "sample_count": 1
+    },
+    "2025-04|佛系|<=20": {
+      "population_count": 1160,
+      "sample_count": 1
+    },
+    "2025-04|摆烂|>140": {
+      "population_count": 8707,
+      "sample_count": 2
+    },
+    "2025-04|摆烂|21-60": {
+      "population_count": 10175,
+      "sample_count": 2
+    },
+    "2025-04|摆烂|61-140": {
+      "population_count": 6860,
+      "sample_count": 1
+    },
+    "2025-04|摆烂|<=20": {
+      "population_count": 5995,
+      "sample_count": 1
+    },
+    "2025-04|%23佛系%23|61-140": {
+      "population_count": 3,
+      "sample_count": 1
+    },
+    "2025-04|%23佛系%23|>140": {
+      "population_count": 5,
+      "sample_count": 1
+    },
+    "2025-04|%23佛系%23|<=20": {
+      "population_count": 2,
+      "sample_count": 1
+    },
+    "2025-04|%23躺平%23|<=20": {
+      "population_count": 10,
+      "sample_count": 1
+    },
+    "2025-04|躺平|<=20": {
+      "population_count": 4065,
+      "sample_count": 1
+    },
+    "2025-04|躺平|21-60": {
+      "population_count": 7786,
+      "sample_count": 1
+    },
+    "2025-04|躺平|61-140": {
+      "population_count": 6076,
+      "sample_count": 1
+    },
+    "2025-04|躺平|>140": {
+      "population_count": 3426,
+      "sample_count": 1
+    },
+    "2025-05|%23佛系%23|21-60": {
+      "population_count": 11,
+      "sample_count": 1
+    },
+    "2025-05|%23摆烂%23|21-60": {
+      "population_count": 47,
+      "sample_count": 1
+    },
+    "2025-05|%23躺平%23|>140": {
+      "population_count": 8389,
+      "sample_count": 1
+    },
+    "2025-05|%23躺平%23|61-140": {
+      "population_count": 203,
+      "sample_count": 1
+    },
+    "2025-05|佛系|>140": {
+      "population_count": 6146,
+      "sample_count": 1
+    },
+    "2025-05|佛系|21-60": {
+      "population_count": 3378,
+      "sample_count": 1
+    },
+    "2025-05|佛系|<=20": {
+      "population_count": 1023,
+      "sample_count": 1
+    },
+    "2025-05|佛系|61-140": {
+      "population_count": 3370,
+      "sample_count": 1
+    },
+    "2025-05|摆烂|>140": {
+      "population_count": 13436,
+      "sample_count": 2
+    },
+    "2025-05|摆烂|21-60": {
+      "population_count": 11179,
+      "sample_count": 2
+    },
+    "2025-05|摆烂|61-140": {
+      "population_count": 9208,
+      "sample_count": 2
+    },
+    "2025-05|摆烂|<=20": {
+      "population_count": 6060,
+      "sample_count": 1
+    },
+    "2025-05|躺平|61-140": {
+      "population_count": 10548,
+      "sample_count": 2
+    },
+    "2025-05|躺平|<=20": {
+      "population_count": 6548,
+      "sample_count": 1
+    },
+    "2025-05|躺平|21-60": {
+      "population_count": 12296,
+      "sample_count": 2
+    },
+    "2025-05|躺平|>140": {
+      "population_count": 7426,
+      "sample_count": 1
+    },
+    "2025-05|%23摆烂%23|>140": {
+      "population_count": 25,
+      "sample_count": 1
+    },
+    "2025-05|%23摆烂%23|<=20": {
+      "population_count": 19,
+      "sample_count": 1
+    },
+    "2025-05|%23躺平%23|21-60": {
+      "population_count": 16,
+      "sample_count": 1
+    },
+    "2025-05|%23摆烂%23|61-140": {
+      "population_count": 12,
+      "sample_count": 1
+    },
+    "2025-05|%23佛系%23|<=20": {
+      "population_count": 2,
+      "sample_count": 1
+    },
+    "2025-05|%23佛系%23|61-140": {
+      "population_count": 2,
+      "sample_count": 1
+    },
+    "2025-05|%23躺平%23|<=20": {
+      "population_count": 9,
+      "sample_count": 1
+    },
+    "2025-05|%23佛系%23|>140": {
+      "population_count": 5,
+      "sample_count": 1
+    },
+    "2025-06|%23摆烂%23|<=20": {
+      "population_count": 31,
+      "sample_count": 1
+    },
+    "2025-06|%23摆烂%23|>140": {
+      "population_count": 16,
+      "sample_count": 1
+    },
+    "2025-06|%23躺平%23|>140": {
+      "population_count": 5589,
+      "sample_count": 1
+    },
+    "2025-06|%23躺平%23|61-140": {
+      "population_count": 165,
+      "sample_count": 1
+    },
+    "2025-06|佛系|>140": {
+      "population_count": 5406,
+      "sample_count": 1
+    },
+    "2025-06|佛系|61-140": {
+      "population_count": 3393,
+      "sample_count": 1
+    },
+    "2025-06|佛系|<=20": {
+      "population_count": 1071,
+      "sample_count": 1
+    },
+    "2025-06|佛系|21-60": {
+      "population_count": 3602,
+      "sample_count": 1
+    },
+    "2025-06|摆烂|>140": {
+      "population_count": 10572,
+      "sample_count": 2
+    },
+    "2025-06|摆烂|61-140": {
+      "population_count": 8069,
+      "sample_count": 1
+    },
+    "2025-06|摆烂|21-60": {
+      "population_count": 10773,
+      "sample_count": 2
+    },
+    "2025-06|摆烂|<=20": {
+      "population_count": 5949,
+      "sample_count": 1
+    },
+    "2025-06|躺平|61-140": {
+      "population_count": 6668,
+      "sample_count": 1
+    },
+    "2025-06|躺平|<=20": {
+      "population_count": 4590,
+      "sample_count": 1
+    },
+    "2025-06|躺平|>140": {
+      "population_count": 4735,
+      "sample_count": 1
+    },
+    "2025-06|躺平|21-60": {
+      "population_count": 7953,
+      "sample_count": 1
+    },
+    "2025-06|%23摆烂%23|21-60": {
+      "population_count": 44,
+      "sample_count": 1
+    },
+    "2025-06|%23摆烂%23|61-140": {
+      "population_count": 13,
+      "sample_count": 1
+    },
+    "2025-06|%23躺平%23|<=20": {
+      "population_count": 6,
+      "sample_count": 1
+    },
+    "2025-06|%23躺平%23|21-60": {
+      "population_count": 25,
+      "sample_count": 1
+    },
+    "2025-06|%23佛系%23|61-140": {
+      "population_count": 2,
+      "sample_count": 1
+    },
+    "2025-06|%23佛系%23|21-60": {
+      "population_count": 3,
+      "sample_count": 1
+    },
+    "2025-06|%23佛系%23|>140": {
+      "population_count": 3,
+      "sample_count": 1
+    },
+    "2025-07|%23摆烂%23|>140": {
+      "population_count": 29,
+      "sample_count": 1
+    },
+    "2025-07|%23摆烂%23|<=20": {
+      "population_count": 11,
+      "sample_count": 1
+    },
+    "2025-07|%23摆烂%23|21-60": {
+      "population_count": 40,
+      "sample_count": 1
+    },
+    "2025-07|%23躺平%23|>140": {
+      "population_count": 11749,
+      "sample_count": 2
+    },
+    "2025-07|%23躺平%23|61-140": {
+      "population_count": 327,
+      "sample_count": 1
+    },
+    "2025-07|佛系|>140": {
+      "population_count": 4870,
+      "sample_count": 1
+    },
+    "2025-07|佛系|21-60": {
+      "population_count": 3316,
+      "sample_count": 1
+    },
+    "2025-07|佛系|61-140": {
+      "population_count": 3047,
+      "sample_count": 1
+    },
+    "2025-07|佛系|<=20": {
+      "population_count": 1087,
+      "sample_count": 1
+    },
+    "2025-07|摆烂|>140": {
+      "population_count": 10004,
+      "sample_count": 2
+    },
+    "2025-07|摆烂|61-140": {
+      "population_count": 8557,
+      "sample_count": 2
+    },
+    "2025-07|摆烂|21-60": {
+      "population_count": 11417,
+      "sample_count": 2
+    },
+    "2025-07|摆烂|<=20": {
+      "population_count": 5886,
+      "sample_count": 1
+    },
+    "2025-07|躺平|21-60": {
+      "population_count": 12713,
+      "sample_count": 2
+    },
+    "2025-07|躺平|<=20": {
+      "population_count": 6943,
+      "sample_count": 1
+    },
+    "2025-07|躺平|61-140": {
+      "population_count": 10529,
+      "sample_count": 2
+    },
+    "2025-07|躺平|>140": {
+      "population_count": 3898,
+      "sample_count": 1
+    },
+    "2025-07|%23摆烂%23|61-140": {
+      "population_count": 14,
+      "sample_count": 1
+    },
+    "2025-07|%23躺平%23|21-60": {
+      "population_count": 25,
+      "sample_count": 1
+    },
+    "2025-07|%23躺平%23|<=20": {
+      "population_count": 10,
+      "sample_count": 1
+    },
+    "2025-07|%23佛系%23|61-140": {
+      "population_count": 4,
+      "sample_count": 1
+    },
+    "2025-07|%23佛系%23|<=20": {
+      "population_count": 1,
+      "sample_count": 1
+    },
+    "2025-07|%23佛系%23|21-60": {
+      "population_count": 3,
+      "sample_count": 1
+    },
+    "2025-07|%23佛系%23|>140": {
+      "population_count": 3,
+      "sample_count": 1
+    },
+    "2025-08|%23摆烂%23|>140": {
+      "population_count": 14,
+      "sample_count": 1
+    },
+    "2025-08|%23躺平%23|>140": {
+      "population_count": 15622,
+      "sample_count": 3
+    },
+    "2025-08|%23躺平%23|61-140": {
+      "population_count": 392,
+      "sample_count": 1
+    },
+    "2025-08|%23躺平%23|21-60": {
+      "population_count": 51,
+      "sample_count": 1
+    },
+    "2025-08|佛系|>140": {
+      "population_count": 5297,
+      "sample_count": 1
+    },
+    "2025-08|佛系|61-140": {
+      "population_count": 3952,
+      "sample_count": 1
+    },
+    "2025-08|佛系|<=20": {
+      "population_count": 1292,
+      "sample_count": 1
+    },
+    "2025-08|佛系|21-60": {
+      "population_count": 4105,
+      "sample_count": 1
+    },
+    "2025-08|摆烂|>140": {
+      "population_count": 10498,
+      "sample_count": 2
+    },
+    "2025-08|摆烂|21-60": {
+      "population_count": 11833,
+      "sample_count": 2
+    },
+    "2025-08|摆烂|<=20": {
+      "population_count": 6627,
+      "sample_count": 1
+    },
+    "2025-08|摆烂|61-140": {
+      "population_count": 8904,
+      "sample_count": 2
+    },
+    "2025-08|躺平|>140": {
+      "population_count": 2142,
+      "sample_count": 1
+    },
+    "2025-08|躺平|61-140": {
+      "population_count": 11337,
+      "sample_count": 2
+    },
+    "2025-08|躺平|21-60": {
+      "population_count": 13291,
+      "sample_count": 2
+    },
+    "2025-08|躺平|<=20": {
+      "population_count": 6847,
+      "sample_count": 1
+    },
+    "2025-08|%23摆烂%23|21-60": {
+      "population_count": 12,
+      "sample_count": 1
+    },
+    "2025-08|%23佛系%23|21-60": {
+      "population_count": 14,
+      "sample_count": 1
+    },
+    "2025-08|%23摆烂%23|<=20": {
+      "population_count": 7,
+      "sample_count": 1
+    },
+    "2025-08|%23佛系%23|61-140": {
+      "population_count": 8,
+      "sample_count": 1
+    },
+    "2025-08|%23躺平%23|<=20": {
+      "population_count": 17,
+      "sample_count": 1
+    },
+    "2025-08|%23佛系%23|>140": {
+      "population_count": 3,
+      "sample_count": 1
+    },
+    "2025-08|%23摆烂%23|61-140": {
+      "population_count": 8,
+      "sample_count": 1
+    },
+    "2025-09|%23摆烂%23|>140": {
+      "population_count": 23,
+      "sample_count": 1
+    },
+    "2025-09|%23摆烂%23|21-60": {
+      "population_count": 19,
+      "sample_count": 1
+    },
+    "2025-09|%23躺平%23|>140": {
+      "population_count": 12441,
+      "sample_count": 2
+    },
+    "2025-09|%23躺平%23|<=20": {
+      "population_count": 17,
+      "sample_count": 1
+    },
+    "2025-09|%23躺平%23|61-140": {
+      "population_count": 365,
+      "sample_count": 1
+    },
+    "2025-09|%23躺平%23|21-60": {
+      "population_count": 33,
+      "sample_count": 1
+    },
+    "2025-09|佛系|21-60": {
+      "population_count": 3381,
+      "sample_count": 1
+    },
+    "2025-09|佛系|>140": {
+      "population_count": 4742,
+      "sample_count": 1
+    },
+    "2025-09|佛系|61-140": {
+      "population_count": 3100,
+      "sample_count": 1
+    },
+    "2025-09|佛系|<=20": {
+      "population_count": 1100,
+      "sample_count": 1
+    },
+    "2025-09|摆烂|>140": {
+      "population_count": 10330,
+      "sample_count": 2
+    },
+    "2025-09|摆烂|21-60": {
+      "population_count": 10496,
+      "sample_count": 2
+    },
+    "2025-09|摆烂|<=20": {
+      "population_count": 5735,
+      "sample_count": 1
+    },
+    "2025-09|摆烂|61-140": {
+      "population_count": 7330,
+      "sample_count": 1
+    },
+    "2025-09|躺平|>140": {
+      "population_count": 4006,
+      "sample_count": 1
+    },
+    "2025-09|躺平|<=20": {
+      "population_count": 6212,
+      "sample_count": 1
+    },
+    "2025-09|躺平|21-60": {
+      "population_count": 11784,
+      "sample_count": 2
+    },
+    "2025-09|躺平|61-140": {
+      "population_count": 9576,
+      "sample_count": 2
+    },
+    "2025-09|%23佛系%23|21-60": {
+      "population_count": 7,
+      "sample_count": 1
+    },
+    "2025-09|%23摆烂%23|<=20": {
+      "population_count": 5,
+      "sample_count": 1
+    },
+    "2025-09|%23摆烂%23|61-140": {
+      "population_count": 1,
+      "sample_count": 1
+    },
+    "2025-09|%23佛系%23|>140": {
+      "population_count": 3,
+      "sample_count": 1
+    },
+    "2025-09|%23佛系%23|<=20": {
+      "population_count": 2,
+      "sample_count": 1
+    },
+    "2025-10|%23佛系%23|21-60": {
+      "population_count": 5,
+      "sample_count": 1
+    },
+    "2025-10|%23摆烂%23|>140": {
+      "population_count": 27,
+      "sample_count": 1
+    },
+    "2025-10|%23摆烂%23|21-60": {
+      "population_count": 13,
+      "sample_count": 1
+    },
+    "2025-10|%23躺平%23|>140": {
+      "population_count": 11296,
+      "sample_count": 2
+    },
+    "2025-10|%23躺平%23|61-140": {
+      "population_count": 293,
+      "sample_count": 1
+    },
+    "2025-10|佛系|>140": {
+      "population_count": 5900,
+      "sample_count": 1
+    },
+    "2025-10|佛系|21-60": {
+      "population_count": 3409,
+      "sample_count": 1
+    },
+    "2025-10|佛系|61-140": {
+      "population_count": 3155,
+      "sample_count": 1
+    },
+    "2025-10|佛系|<=20": {
+      "population_count": 1208,
+      "sample_count": 1
+    },
+    "2025-10|摆烂|21-60": {
+      "population_count": 9886,
+      "sample_count": 2
+    },
+    "2025-10|摆烂|>140": {
+      "population_count": 11137,
+      "sample_count": 2
+    },
+    "2025-10|摆烂|61-140": {
+      "population_count": 7259,
+      "sample_count": 1
+    },
+    "2025-10|摆烂|<=20": {
+      "population_count": 5539,
+      "sample_count": 1
+    },
+    "2025-10|躺平|61-140": {
+      "population_count": 10468,
+      "sample_count": 2
+    },
+    "2025-10|躺平|21-60": {
+      "population_count": 12597,
+      "sample_count": 2
+    },
+    "2025-10|躺平|<=20": {
+      "population_count": 6901,
+      "sample_count": 1
+    },
+    "2025-10|躺平|>140": {
+      "population_count": 6767,
+      "sample_count": 1
+    },
+    "2025-10|%23佛系%23|>140": {
+      "population_count": 2,
+      "sample_count": 1
+    },
+    "2025-10|%23摆烂%23|61-140": {
+      "population_count": 5,
+      "sample_count": 1
+    },
+    "2025-10|%23躺平%23|<=20": {
+      "population_count": 13,
+      "sample_count": 1
+    },
+    "2025-10|%23摆烂%23|<=20": {
+      "population_count": 5,
+      "sample_count": 1
+    },
+    "2025-10|%23躺平%23|21-60": {
+      "population_count": 40,
+      "sample_count": 1
+    },
+    "2025-10|%23佛系%23|61-140": {
+      "population_count": 4,
+      "sample_count": 1
+    },
+    "2025-10|%23佛系%23|<=20": {
+      "population_count": 2,
+      "sample_count": 1
+    },
+    "2025-11|%23佛系%23|21-60": {
+      "population_count": 20,
+      "sample_count": 1
+    },
+    "2025-11|%23佛系%23|>140": {
+      "population_count": 6,
+      "sample_count": 1
+    },
+    "2025-11|%23摆烂%23|>140": {
+      "population_count": 25,
+      "sample_count": 1
+    },
+    "2025-11|佛系|21-60": {
+      "population_count": 2902,
+      "sample_count": 1
+    },
+    "2025-11|佛系|>140": {
+      "population_count": 5463,
+      "sample_count": 1
+    },
+    "2025-11|佛系|61-140": {
+      "population_count": 2517,
+      "sample_count": 1
+    },
+    "2025-11|佛系|<=20": {
+      "population_count": 1090,
+      "sample_count": 1
+    },
+    "2025-11|摆烂|61-140": {
+      "population_count": 6594,
+      "sample_count": 1
+    },
+    "2025-11|摆烂|21-60": {
+      "population_count": 9289,
+      "sample_count": 2
+    },
+    "2025-11|摆烂|>140": {
+      "population_count": 11357,
+      "sample_count": 2
+    },
+    "2025-11|摆烂|<=20": {
+      "population_count": 5186,
+      "sample_count": 1
+    },
+    "2025-11|躺平|>140": {
+      "population_count": 15290,
+      "sample_count": 2
+    },
+    "2025-11|躺平|61-140": {
+      "population_count": 8350,
+      "sample_count": 1
+    },
+    "2025-11|躺平|<=20": {
+      "population_count": 5632,
+      "sample_count": 1
+    },
+    "2025-11|躺平|21-60": {
+      "population_count": 9961,
+      "sample_count": 2
+    },
+    "2025-11|%23摆烂%23|21-60": {
+      "population_count": 14,
+      "sample_count": 1
+    },
+    "2025-11|%23躺平%23|61-140": {
+      "population_count": 16,
+      "sample_count": 1
+    },
+    "2025-11|%23佛系%23|61-140": {
+      "population_count": 19,
+      "sample_count": 1
+    },
+    "2025-11|%23躺平%23|<=20": {
+      "population_count": 4,
+      "sample_count": 1
+    },
+    "2025-11|%23躺平%23|>140": {
+      "population_count": 271,
+      "sample_count": 1
+    },
+    "2025-11|%23躺平%23|21-60": {
+      "population_count": 17,
+      "sample_count": 1
+    },
+    "2025-11|%23摆烂%23|61-140": {
+      "population_count": 4,
+      "sample_count": 1
+    },
+    "2025-11|%23摆烂%23|<=20": {
+      "population_count": 2,
+      "sample_count": 1
+    },
+    "2025-11|%23佛系%23|<=20": {
+      "population_count": 1,
+      "sample_count": 1
+    },
+    "2025-12|%23佛系%23|21-60": {
+      "population_count": 36,
+      "sample_count": 1
+    },
+    "2025-12|%23佛系%23|61-140": {
+      "population_count": 32,
+      "sample_count": 1
+    },
+    "2025-12|%23摆烂%23|21-60": {
+      "population_count": 13,
+      "sample_count": 1
+    },
+    "2025-12|%23摆烂%23|>140": {
+      "population_count": 28,
+      "sample_count": 1
+    },
+    "2025-12|%23摆烂%23|61-140": {
+      "population_count": 10,
+      "sample_count": 1
+    },
+    "2025-12|%23躺平%23|>140": {
+      "population_count": 7114,
+      "sample_count": 1
+    },
+    "2025-12|%23躺平%23|61-140": {
+      "population_count": 467,
+      "sample_count": 1
+    },
+    "2025-12|%23躺平%23|21-60": {
+      "population_count": 358,
+      "sample_count": 1
+    },
+    "2025-12|佛系|>140": {
+      "population_count": 5581,
+      "sample_count": 1
+    },
+    "2025-12|佛系|61-140": {
+      "population_count": 2664,
+      "sample_count": 1
+    },
+    "2025-12|佛系|21-60": {
+      "population_count": 2717,
+      "sample_count": 1
+    },
+    "2025-12|佛系|<=20": {
+      "population_count": 819,
+      "sample_count": 1
+    },
+    "2025-12|摆烂|>140": {
+      "population_count": 12329,
+      "sample_count": 2
+    },
+    "2025-12|摆烂|61-140": {
+      "population_count": 7797,
+      "sample_count": 1
+    },
+    "2025-12|摆烂|21-60": {
+      "population_count": 9560,
+      "sample_count": 2
+    },
+    "2025-12|摆烂|<=20": {
+      "population_count": 5107,
+      "sample_count": 1
+    },
+    "2025-12|躺平|<=20": {
+      "population_count": 4911,
+      "sample_count": 1
+    },
+    "2025-12|躺平|21-60": {
+      "population_count": 9855,
+      "sample_count": 2
+    },
+    "2025-12|躺平|61-140": {
+      "population_count": 9208,
+      "sample_count": 2
+    },
+    "2025-12|躺平|>140": {
+      "population_count": 9963,
+      "sample_count": 2
+    },
+    "2025-12|%23佛系%23|>140": {
+      "population_count": 3,
+      "sample_count": 1
+    },
+    "2025-12|%23摆烂%23|<=20": {
+      "population_count": 4,
+      "sample_count": 1
+    },
+    "2025-12|%23躺平%23|<=20": {
+      "population_count": 123,
+      "sample_count": 1
+    },
+    "2025-12|%23佛系%23|<=20": {
+      "population_count": 1,
+      "sample_count": 1
+    },
+    "2026-01|%23躺平%23|21-60": {
+      "population_count": 3005,
+      "sample_count": 1
+    },
+    "2026-01|%23躺平%23|61-140": {
+      "population_count": 2944,
+      "sample_count": 1
+    },
+    "2026-01|摆烂|>140": {
+      "population_count": 19,
+      "sample_count": 1
+    },
+    "2026-01|躺平|21-60": {
+      "population_count": 4138,
+      "sample_count": 1
+    },
+    "2026-01|躺平|61-140": {
+      "population_count": 3919,
+      "sample_count": 1
+    },
+    "2026-01|躺平|>140": {
+      "population_count": 6480,
+      "sample_count": 1
+    },
+    "2026-01|躺平|<=20": {
+      "population_count": 2050,
+      "sample_count": 1
+    },
+    "2026-01|%23躺平%23|>140": {
+      "population_count": 4831,
+      "sample_count": 1
+    },
+    "2026-01|%23躺平%23|<=20": {
+      "population_count": 1413,
+      "sample_count": 1
+    },
+    "2026-01|%23摆烂%23|<=20": {
+      "population_count": 4,
+      "sample_count": 1
+    },
+    "2026-01|%23摆烂%23|61-140": {
+      "population_count": 3,
+      "sample_count": 1
+    },
+    "2026-01|%23摆烂%23|21-60": {
+      "population_count": 3,
+      "sample_count": 1
+    },
+    "2026-01|摆烂|61-140": {
+      "population_count": 48,
+      "sample_count": 1
+    },
+    "2026-01|摆烂|21-60": {
+      "population_count": 36,
+      "sample_count": 1
+    },
+    "2026-01|摆烂|<=20": {
+      "population_count": 16,
+      "sample_count": 1
+    },
+    "2026-02|摆烂|61-140": {
+      "population_count": 68,
+      "sample_count": 1
+    },
+    "2026-02|摆烂|21-60": {
+      "population_count": 51,
+      "sample_count": 1
+    },
+    "2026-02|摆烂|>140": {
+      "population_count": 15,
+      "sample_count": 1
+    },
+    "2026-02|摆烂|<=20": {
+      "population_count": 20,
+      "sample_count": 1
+    },
+    "2026-02|佛系|21-60": {
+      "population_count": 74,
+      "sample_count": 1
+    },
+    "2026-02|佛系|61-140": {
+      "population_count": 51,
+      "sample_count": 1
+    },
+    "2026-02|佛系|<=20": {
+      "population_count": 23,
+      "sample_count": 1
+    },
+    "2026-02|佛系|>140": {
+      "population_count": 16,
+      "sample_count": 1
+    }
+  },
+  "sample_distributions": {
+    "len_bin": {
+      "21-60": 297,
+      ">140": 242,
+      "61-140": 237,
+      "<=20": 224
+    },
+    "month": {
+      "2023-07": 34,
+      "2023-05": 33,
+      "2023-06": 32,
+      "2023-10": 31,
+      "2025-08": 30,
+      "2025-07": 30,
+      "2023-09": 30,
+      "2024-08": 29,
+      "2023-04": 29,
+      "2025-12": 29,
+      "2025-10": 29,
+      "2025-05": 29,
+      "2024-03": 29,
+      "2024-04": 28,
+      "2024-07": 28,
+      "2025-11": 28,
+      "2025-09": 28,
+      "2023-12": 28,
+      "2024-05": 28,
+      "2025-03": 28,
+      "2023-11": 27,
+      "2024-09": 27,
+      "2024-02": 27,
+      "2023-08": 27,
+      "2024-06": 27,
+      "2025-04": 26,
+      "2025-01": 26,
+      "2025-02": 25,
+      "2024-10": 25,
+      "2025-06": 25,
+      "2024-11": 23,
+      "2023-03": 22,
+      "2024-12": 21,
+      "2023-02": 20,
+      "2023-01": 20,
+      "2024-01": 19,
+      "2026-01": 15,
+      "2026-02": 8
+    },
+    "keyword": {
+      "摆烂": 295,
+      "躺平": 199,
+      "%23躺平%23": 166,
+      "佛系": 148,
+      "%23摆烂%23": 147,
+      "%23佛系%23": 45
+    }
+  }
+}

@@ -1,8 +1,8 @@
 # Local config template for bert/02_llm_label_local.py
 
-input = "data/bert/sample.csv"
-output = "data/bert/labeled.csv"
-report_path = "data/bert/labeling_report.json"
+input = "bert/data/sample.csv"
+output = "bert/data/labeled.csv"
+report_path = "bert/data/labeling_report.json"
 max_chars = 800
 temperature = 0.0
 timeout = 240

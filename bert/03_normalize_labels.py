@@ -23,17 +23,17 @@ def parse_args() -> argparse.Namespace:
     )
     parser.add_argument(
         "--input_csv",
-        default="data/bert/labeled.csv",
+        default="bert/data/labeled.csv",
         help="Input labeled CSV path.",
     )
     parser.add_argument(
         "--output_csv",
-        default="data/bert/labeled_binary.csv",
+        default="bert/data/labeled_binary.csv",
         help="Output CSV path after label normalization.",
     )
     parser.add_argument(
         "--report_path",
-        default="data/bert/labeled_binary_report.json",
+        default="bert/data/labeled_binary_report.json",
         help="Normalization report JSON path.",
     )
     parser.add_argument(

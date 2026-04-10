@@ -74,7 +74,7 @@ def parse_args() -> argparse.Namespace:
     )
     parser.add_argument(
         "--input_csv",
-        default="data/bert/labeled_binary.csv",
+        default="bert/data/labeled_binary.csv",
         help="Training CSV/XLSX path.",
     )
     parser.add_argument(

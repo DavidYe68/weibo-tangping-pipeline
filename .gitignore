@@ -15,7 +15,9 @@ AI/
 
 raw/
 archive/
-data/
+/data/
+!/bert/data/
+!/bert/data/**
 logs/
 preprocessed.zip
 

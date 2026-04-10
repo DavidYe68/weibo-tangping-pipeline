@@ -22,7 +22,7 @@ def parse_args() -> argparse.Namespace:
     )
     parser.add_argument(
         "--input_path",
-        default="data/bert/sample_6000_labeled.xlsx",
+        default="bert/data/sample_6000_labeled.xlsx",
         help="Excel dataset path.",
     )
     parser.add_argument(

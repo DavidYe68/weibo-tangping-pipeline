@@ -583,9 +583,9 @@ def parse_args() -> argparse.Namespace:
 
     parser = argparse.ArgumentParser(description="LLM labeling for tangping relevance with Qwen labeler + optional fixer fallback")
     parser.add_argument("--config", default=bootstrap_args.config)
-    parser.add_argument("--input", default="data/bert/sample.csv")
-    parser.add_argument("--output", default="data/bert/labeled.csv")
-    parser.add_argument("--report_path", default="data/bert/labeling_report.json")
+    parser.add_argument("--input", default="bert/data/sample.csv")
+    parser.add_argument("--output", default="bert/data/labeled.csv")
+    parser.add_argument("--report_path", default="bert/data/labeling_report.json")
     parser.add_argument("--text_col", default=None)
     parser.add_argument("--labeler_provider", default="qwen_openai", choices=["qwen_openai", "openai_compatible", "ollama"])
     parser.add_argument(

@@ -49,7 +49,7 @@ python main.py export-csv text
 
 ## 直接试训 sample_6000 标注集
 
-如果你已经把标注文件放在 `data/bert/sample_6000_labeled.xlsx`，可以直接分别训练 `broad` 和 `strict` 两套 BERT：
+如果你已经把标注文件放在 `bert/data/sample_6000_labeled.xlsx`，可以直接分别训练 `broad` 和 `strict` 两套 BERT：
 
 ```bash
 python3 bert/06_train_sample_6000_dual.py --local_files_only

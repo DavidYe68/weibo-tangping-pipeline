@@ -310,8 +310,8 @@ python bert/01_stratified_sampling.py
 - 从 `data/processed/text_dedup/*.parquet` 读取
 - 输入默认视为已经完成文本去重，不会在抽样阶段再次去重
 - 按月份、keyword、文本长度分层抽样
-- 输出 `data/bert/sample.csv`
-- 同时输出 `data/bert/sampling_report.json`
+- 输出 `bert/data/sample.csv`
+- 同时输出 `bert/data/sampling_report.json`
 
 常用参数：
 
@@ -320,8 +320,8 @@ python bert/01_stratified_sampling.py --n 6000
 python bert/01_stratified_sampling.py --seed 42
 python bert/01_stratified_sampling.py --k_min 0
 python bert/01_stratified_sampling.py --input "data/processed/text_dedup/*.parquet"
-python bert/01_stratified_sampling.py --output data/bert/sample.csv
-python bert/01_stratified_sampling.py --report_path data/bert/sampling_report.json
+python bert/01_stratified_sampling.py --output bert/data/sample.csv
+python bert/01_stratified_sampling.py --report_path bert/data/sampling_report.json
 ```
 
 说明：
@@ -340,20 +340,20 @@ python bert/02_llm_label_local.py
 
 默认行为：
 
-- 默认从 `data/bert/sample.csv` 读取
+- 默认从 `bert/data/sample.csv` 读取
 - 主标注模型默认走 Qwen 兼容 OpenAI API
 - JSON 修复器默认仍走本地 Ollama
 - 默认会读取 `bert/llm_label_local.toml` 配置文件（如存在）
 - 仓库内默认只保留示例文件 `bert/llm_label_local.example.toml`
-- 默认输出 `data/bert/labeled.csv`
-- 同时输出 `data/bert/labeling_report.json`
+- 默认输出 `bert/data/labeled.csv`
+- 同时输出 `bert/data/labeling_report.json`
 
 常用参数：
 
 ```bash
 python bert/02_llm_label_local.py
-python bert/02_llm_label_local.py --input data/bert/sample.csv --output data/bert/labeled.csv
-python bert/02_llm_label_local.py --report_path data/bert/labeling_report.json
+python bert/02_llm_label_local.py --input bert/data/sample.csv --output bert/data/labeled.csv
+python bert/02_llm_label_local.py --report_path bert/data/labeling_report.json
 export DASHSCOPE_API_KEY=your_key_here
 python bert/02_llm_label_local.py --labeler_model qwen-coder-plus-latest
 python bert/02_llm_label_local.py --labeler_api_key your_key_here
@@ -368,9 +368,9 @@ python bert/02_llm_label_local.py --fixer_provider qwen_openai --fixer_model qwe
 配置文件示例：
 
 ```toml
-input = "data/bert/sample.csv"
-output = "data/bert/labeled.csv"
-report_path = "data/bert/labeling_report.json"
+input = "bert/data/sample.csv"
+output = "bert/data/labeled.csv"
+report_path = "bert/data/labeling_report.json"
 
 [labeler]
 provider = "qwen_openai"
@@ -436,7 +436,7 @@ python main.py export-csv text
 
 ```bash
 python bert/01_stratified_sampling.py
-python bert/02_llm_label_local.py --input data/bert/sample.csv --output data/bert/labeled.csv
+python bert/02_llm_label_local.py --input bert/data/sample.csv --output bert/data/labeled.csv
 ```
 
 ### 10.3 全量重建
