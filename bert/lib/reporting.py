@@ -24,6 +24,13 @@ def _text_preview(series: pd.Series, limit: int = 120) -> pd.Series:
     return np.where(text.str.len() > limit, text.str.slice(0, limit) + "...", text)
 
 
+def _format_metric(value: Any) -> str:
+    try:
+        return f"{float(value):.4f}"
+    except (TypeError, ValueError):
+        return "n/a"
+
+
 def build_metric_rows(
     label_name: str,
     metrics_payload: Dict[str, Any],
@@ -164,7 +171,7 @@ def _write_ranked_errors(
 def _write_error_focus_files(
     df: pd.DataFrame,
     label_name: str,
-    inspect_dir: Path,
+    review_dir: Path,
     *,
     text_col: str,
     source_col: Optional[str],
@@ -176,19 +183,19 @@ def _write_error_focus_files(
     return {
         f"top_errors_{label_name}_path": _write_ranked_errors(
             errors,
-            inspect_dir / f"top_errors_{label_name}.csv",
+            review_dir / f"top_errors_{label_name}.csv",
             text_col=text_col,
             source_col=source_col,
         ),
         f"top_fp_{label_name}_path": _write_ranked_errors(
             errors[errors["error_type"] == "FP"].copy(),
-            inspect_dir / f"top_fp_{label_name}.csv",
+            review_dir / f"top_fp_{label_name}.csv",
             text_col=text_col,
             source_col=source_col,
         ),
         f"top_fn_{label_name}_path": _write_ranked_errors(
             errors[errors["error_type"] == "FN"].copy(),
-            inspect_dir / f"top_fn_{label_name}.csv",
+            review_dir / f"top_fn_{label_name}.csv",
             text_col=text_col,
             source_col=source_col,
         ),
@@ -286,7 +293,8 @@ def _build_label_diagnosis(
 
 def _write_side_by_side_diagnostics(
     side_by_side_path: Path,
-    inspect_dir: Path,
+    diagnosis_dir: Path,
+    review_dir: Path,
     *,
     text_col: str,
     source_col: Optional[str],
@@ -316,7 +324,7 @@ def _write_side_by_side_diagnostics(
         .reset_index(name="count")
         .sort_values("error_bucket")
     )
-    summary_path = inspect_dir / "side_by_side_error_summary.csv"
+    summary_path = diagnosis_dir / "side_by_side_error_summary.csv"
     summary.to_csv(summary_path, index=False, encoding="utf-8-sig")
 
     error_rows = side_by_side[side_by_side["error_bucket"] != "both_correct"].copy()
@@ -344,7 +352,7 @@ def _write_side_by_side_diagnostics(
         "strict_error_type",
     ]
     existing_review_columns = [column for column in review_columns if column]
-    review_path = inspect_dir / "side_by_side_errors_review.csv"
+    review_path = review_dir / "side_by_side_errors_review.csv"
     error_rows[existing_review_columns].head(300).to_csv(review_path, index=False, encoding="utf-8-sig")
 
     return {
@@ -361,7 +369,11 @@ def write_dual_run_inspect_artifacts(
     source_col: Optional[str] = None,
 ) -> Dict[str, str]:
     inspect_dir = base_output_dir / "inspect"
+    diagnosis_dir = inspect_dir / "diagnosis"
+    review_dir = inspect_dir / "review"
     inspect_dir.mkdir(parents=True, exist_ok=True)
+    diagnosis_dir.mkdir(parents=True, exist_ok=True)
+    review_dir.mkdir(parents=True, exist_ok=True)
 
     metrics_rows: List[Dict[str, Any]] = []
     error_rows: List[Dict[str, Any]] = []
@@ -377,65 +389,101 @@ def write_dual_run_inspect_artifacts(
             _write_error_focus_files(
                 predictions,
                 label_name,
-                inspect_dir,
+                review_dir,
                 text_col=text_col,
                 source_col=source_col,
             )
         )
 
     metrics_overview = pd.DataFrame(metrics_rows).sort_values(["label_standard", "split"]).reset_index(drop=True)
-    metrics_overview_path = inspect_dir / "metrics_overview.csv"
+    metrics_overview_path = diagnosis_dir / "metrics_overview.csv"
     metrics_overview.to_csv(metrics_overview_path, index=False, encoding="utf-8-sig")
     output_paths["metrics_overview_path"] = str(metrics_overview_path.resolve())
 
     error_summary = pd.DataFrame(error_rows)
     if not error_summary.empty:
         error_summary = error_summary.sort_values(["label_standard", "source_name", "error_type"]).reset_index(drop=True)
-    error_summary_path = inspect_dir / "error_summary.csv"
+    error_summary_path = diagnosis_dir / "error_summary.csv"
     error_summary.to_csv(error_summary_path, index=False, encoding="utf-8-sig")
     output_paths["error_summary_path"] = str(error_summary_path.resolve())
 
     label_diagnosis = _build_label_diagnosis(metrics_overview, error_summary, experiment_name=experiment_name)
-    label_diagnosis_path = inspect_dir / "label_diagnosis.csv"
+    label_diagnosis_path = diagnosis_dir / "label_diagnosis.csv"
     label_diagnosis.to_csv(label_diagnosis_path, index=False, encoding="utf-8-sig")
     output_paths["label_diagnosis_path"] = str(label_diagnosis_path.resolve())
 
     side_by_side_paths = _write_side_by_side_diagnostics(
-        base_output_dir / "test_predictions_side_by_side.csv",
-        inspect_dir,
+        base_output_dir / "compare" / "test_predictions_side_by_side.csv",
+        diagnosis_dir,
+        review_dir,
         text_col=text_col,
         source_col=source_col,
     )
     output_paths.update(side_by_side_paths)
 
-    metrics_text = metrics_overview.to_string(index=False) if not metrics_overview.empty else "_No metrics rows found._"
-    diagnosis_text = label_diagnosis.to_string(index=False) if not label_diagnosis.empty else "_No diagnosis rows found._"
+    diagnosis_rows = ["_No diagnosis rows found._"]
+    if not label_diagnosis.empty:
+        diagnosis_rows = []
+        for _, row in label_diagnosis.iterrows():
+            label_name = str(row["label_standard"])
+            suggested_review_file = str(row.get("suggested_review_file", "") or "")
+            diagnosis_rows.extend(
+                [
+                    f"### {label_name}",
+                    (
+                        f"- test_f1={_format_metric(row.get('test_f1'))}, "
+                        f"precision={_format_metric(row.get('test_precision'))}, "
+                        f"recall={_format_metric(row.get('test_recall'))}, "
+                        f"val_f1={_format_metric(row.get('val_f1'))}"
+                    ),
+                    (
+                        f"- dominant_error={row.get('dominant_error_type', '') or 'n/a'} "
+                        f"({int(row.get('dominant_error_count', 0) or 0)})"
+                    ),
+                    f"- focus={row.get('focus', '') or 'n/a'}",
+                    f"- suggested_review=review/{suggested_review_file}" if suggested_review_file else "- suggested_review=n/a",
+                    f"- note={row.get('note', '') or ''}",
+                    "",
+                ]
+            )
+
+    side_by_side_text = "_No side-by-side summary found._"
+    if Path(side_by_side_paths["side_by_side_error_summary_path"]).exists():
+        side_by_side_summary = pd.read_csv(side_by_side_paths["side_by_side_error_summary_path"])
+        if not side_by_side_summary.empty:
+            side_by_side_text = "\n".join(
+                f"- {row['error_bucket']}: {int(row['count'])}"
+                for _, row in side_by_side_summary.iterrows()
+            )
+
     summary_lines = [
         f"# Inspect Summary: {experiment_name or base_output_dir.name}",
         "",
         "## First Look",
-        "1. 先看 label_diagnosis.csv，判断先查 FP 还是 FN。",
-        "2. 再看 side_by_side_error_summary.csv，判断是 broad/strict 哪边更不稳。",
-        "3. 最后按 diagnosis 建议打开 top_fp_*.csv 或 top_fn_*.csv。",
+        "1. 先看 `diagnosis/label_diagnosis.csv`，判断先查 FP 还是 FN。",
+        "2. 再看 `diagnosis/side_by_side_error_summary.csv`，判断是 broad/strict 哪边更不稳。",
+        "3. 最后按 diagnosis 建议打开 `review/top_fp_*.csv` 或 `review/top_fn_*.csv`。",
         "",
         "## Label Diagnosis",
-        diagnosis_text,
+        *diagnosis_rows,
         "",
-        "## Metrics Overview",
-        metrics_text,
+        "## Side-by-Side",
+        side_by_side_text,
         "",
-        "## Quick Files",
-        f"- label_diagnosis.csv: {label_diagnosis_path.name}",
-        f"- metrics_overview.csv: {metrics_overview_path.name}",
-        f"- error_summary.csv: {error_summary_path.name}",
-        f"- side_by_side_error_summary.csv: {Path(side_by_side_paths['side_by_side_error_summary_path']).name}",
-        f"- side_by_side_errors_review.csv: {Path(side_by_side_paths['side_by_side_errors_review_path']).name}",
-        f"- top_errors_broad.csv: {Path(output_paths['top_errors_broad_path']).name}",
-        f"- top_fp_broad.csv: {Path(output_paths['top_fp_broad_path']).name}",
-        f"- top_fn_broad.csv: {Path(output_paths['top_fn_broad_path']).name}",
-        f"- top_errors_strict.csv: {Path(output_paths['top_errors_strict_path']).name}",
-        f"- top_fp_strict.csv: {Path(output_paths['top_fp_strict_path']).name}",
-        f"- top_fn_strict.csv: {Path(output_paths['top_fn_strict_path']).name}",
+        "## Diagnosis Files",
+        "- diagnosis/label_diagnosis.csv",
+        "- diagnosis/metrics_overview.csv",
+        "- diagnosis/error_summary.csv",
+        "- diagnosis/side_by_side_error_summary.csv",
+        "",
+        "## Review Files",
+        "- review/side_by_side_errors_review.csv",
+        "- review/top_errors_broad.csv",
+        "- review/top_fp_broad.csv",
+        "- review/top_fn_broad.csv",
+        "- review/top_errors_strict.csv",
+        "- review/top_fp_strict.csv",
+        "- review/top_fn_strict.csv",
     ]
     summary_md_path = inspect_dir / "summary.md"
     summary_md_path.write_text("\n".join(summary_lines), encoding="utf-8")
@@ -463,11 +511,11 @@ def write_eval_collection_inspect_artifacts(base_output_dir: Path, overall_summa
                 float(test_snapshot.get("recall", 0.0)),
                 float(test_snapshot.get("f1", 0.0)),
             )
-            suggested_file = f"{experiment_name}/inspect/top_errors_{label_name}.csv"
+            suggested_file = f"{experiment_name}/inspect/review/top_errors_{label_name}.csv"
             if focus == "recall_low":
-                suggested_file = f"{experiment_name}/inspect/top_fn_{label_name}.csv"
+                suggested_file = f"{experiment_name}/inspect/review/top_fn_{label_name}.csv"
             elif focus == "precision_low":
-                suggested_file = f"{experiment_name}/inspect/top_fp_{label_name}.csv"
+                suggested_file = f"{experiment_name}/inspect/review/top_fp_{label_name}.csv"
             triage_rows.append(
                 {
                     "experiment_name": experiment_name,
@@ -501,7 +549,7 @@ def write_eval_collection_inspect_artifacts(base_output_dir: Path, overall_summa
         "",
         "## First Look",
         "1. 先看 experiment_triage.csv，决定每个实验先查 FP 还是 FN。",
-        "2. 再进对应实验目录看 inspect/summary.md 和 top_fp/top_fn 文件。",
+        "2. 再进对应实验目录看 inspect/summary.md 和 inspect/review/ 下的复核文件。",
         "",
         "## Experiment Triage",
         triage_text,

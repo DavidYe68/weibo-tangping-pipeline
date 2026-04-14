@@ -171,14 +171,17 @@ python3 bert/05_train_dual_label_classifier.py \
 - `test_misclassified.csv`
 - `best_model/`
 
-双标签训练额外会生成：
+双标签训练额外会生成一套分层目录，建议按这个顺序看：
 
-- `shared_split_dataset.csv`
-- `test_predictions_side_by_side.csv`
-- `test_misclassified_side_by_side.csv`
+- `run_overview.md`
+- `shared/shared_split_dataset.csv`
+- `shared/shared_split_manifest.json`
+- `compare/test_predictions_side_by_side.csv`
+- `compare/test_misclassified_side_by_side.csv`
 - `inspect/summary.md`
-- `inspect/top_fp_*.csv`
-- `inspect/top_fn_*.csv`
+- `inspect/diagnosis/label_diagnosis.csv`
+- `inspect/review/top_fp_*.csv`
+- `inspect/review/top_fn_*.csv`
 
 ## 最后建议
 

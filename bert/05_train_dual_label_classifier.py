@@ -174,6 +174,98 @@ def build_train_config(args: argparse.Namespace, label_col: str, input_path: Pat
     )
 
 
+def _format_metric(value: Any) -> str:
+    try:
+        return f"{float(value):.4f}"
+    except (TypeError, ValueError):
+        return "n/a"
+
+
+def _format_split_sizes(split_sizes: Dict[str, Any]) -> str:
+    return ", ".join(
+        f"{split_name}={int(split_sizes.get(split_name, 0))}"
+        for split_name in ("train", "val", "test")
+    )
+
+
+def _display_relative_path(path_value: str | Path, base_output_dir: Path) -> str:
+    target = Path(path_value).resolve()
+    base = base_output_dir.resolve()
+    try:
+        return str(target.relative_to(base))
+    except ValueError:
+        return str(target)
+
+
+def write_run_overview(
+    base_output_dir: Path,
+    *,
+    summary: Dict[str, Any],
+    overview_path: Path,
+) -> str:
+    shared_split = summary.get("shared_split", {})
+    compare_reports = summary.get("combined_reports", {})
+    inspect_reports = summary.get("inspect_reports", {})
+    runs = summary.get("runs", {})
+
+    lines = [
+        f"# Dual Run Overview: {base_output_dir.name}",
+        "",
+        "## First Look",
+        (
+            "1. 先看 `inspect/summary.md`："
+            f"{_display_relative_path(inspect_reports.get('summary_md_path', 'inspect/summary.md'), base_output_dir)}"
+        ),
+        (
+            "2. 再看 `compare/test_predictions_side_by_side.csv`："
+            f"{_display_relative_path(compare_reports.get('side_by_side_predictions_path', 'compare/test_predictions_side_by_side.csv'), base_output_dir)}"
+        ),
+        "3. 如果要追原始模型产物，再进入 `broad/` 或 `strict/`。",
+        "",
+        "## Dataset",
+        f"- split_strategy: {shared_split.get('split_strategy', 'n/a')}",
+        f"- rows: {shared_split.get('rows', 0)}",
+        f"- split_sizes: {_format_split_sizes(shared_split.get('split_sizes', {}))}",
+        "",
+        "## Label Snapshot",
+    ]
+
+    for label_name in ("broad", "strict"):
+        snapshot = runs.get(label_name, {}).get("metrics_snapshot", {})
+        validation = snapshot.get("validation", {})
+        test = snapshot.get("test", {})
+        lines.extend(
+            [
+                f"### {label_name}",
+                (
+                    f"- validation: f1={_format_metric(validation.get('f1'))}, "
+                    f"precision={_format_metric(validation.get('precision'))}, "
+                    f"recall={_format_metric(validation.get('recall'))}"
+                ),
+                (
+                    f"- test: f1={_format_metric(test.get('f1'))}, "
+                    f"precision={_format_metric(test.get('precision'))}, "
+                    f"recall={_format_metric(test.get('recall'))}"
+                ),
+                f"- model artifacts: {label_name}/",
+            ]
+        )
+
+    lines.extend(
+        [
+            "",
+            "## Directory Guide",
+            "- `shared/`: 共享切分后的训练输入和 split manifest。",
+            "- `broad/` / `strict/`: 各自模型的 metrics、history、predictions、best_model。",
+            "- `compare/`: broad/strict 合并后的 side-by-side 与错例对照表。",
+            "- `inspect/diagnosis/`: 指标总览、误差汇总、label diagnosis。",
+            "- `inspect/review/`: 适合人工复核的 top FP/FN 和 side-by-side 错例。",
+        ]
+    )
+    overview_path.write_text("\n".join(lines), encoding="utf-8")
+    return str(overview_path.resolve())
+
+
 def prepare_shared_dataset(args: argparse.Namespace, base_output_dir: Path) -> tuple[Path, Dict[str, Any]]:
     from lib.splits import create_shared_splits
 
@@ -230,7 +322,8 @@ def prepare_shared_dataset(args: argparse.Namespace, base_output_dir: Path) -> t
     shared_df["__dual_row_id"] = range(len(shared_df))
     shared_df = shared_df.drop(columns=["broad_norm", "strict_norm"])
 
-    shared_input_path = base_output_dir / "shared_split_dataset.csv"
+    shared_dir = base_output_dir / "shared"
+    shared_input_path = shared_dir / "shared_split_dataset.csv"
     shared_input_path.parent.mkdir(parents=True, exist_ok=True)
     shared_df.to_csv(shared_input_path, index=False, encoding="utf-8-sig")
 
@@ -244,7 +337,7 @@ def prepare_shared_dataset(args: argparse.Namespace, base_output_dir: Path) -> t
         "source_breakdown": source_breakdown,
         "input_groups": {name: [str(path.resolve()) for path in paths] for name, paths in groups.items()},
     }
-    save_json(base_output_dir / "shared_split_manifest.json", split_manifest)
+    save_json(shared_dir / "shared_split_manifest.json", split_manifest)
     return shared_input_path, split_manifest
 
 
@@ -299,23 +392,26 @@ def build_side_by_side_predictions(
 
 
 def save_combined_reports(base_output_dir: Path, text_col: str) -> Dict[str, str]:
+    compare_dir = base_output_dir / "compare"
+    compare_dir.mkdir(parents=True, exist_ok=True)
+
     broad_predictions = load_predictions(base_output_dir / "broad" / "test_predictions.csv")
     strict_predictions = load_predictions(base_output_dir / "strict" / "test_predictions.csv")
 
     combined_predictions = pd.concat([broad_predictions, strict_predictions], ignore_index=True)
-    combined_predictions_path = base_output_dir / "test_predictions_combined.csv"
+    combined_predictions_path = compare_dir / "test_predictions_combined.csv"
     combined_predictions.to_csv(combined_predictions_path, index=False, encoding="utf-8-sig")
 
     combined_errors = combined_predictions[coerce_bool_series(combined_predictions["is_error"])].copy()
-    combined_errors_path = base_output_dir / "test_misclassified_combined.csv"
+    combined_errors_path = compare_dir / "test_misclassified_combined.csv"
     combined_errors.to_csv(combined_errors_path, index=False, encoding="utf-8-sig")
 
     side_by_side = build_side_by_side_predictions(broad_predictions, strict_predictions, text_col)
-    side_by_side_path = base_output_dir / "test_predictions_side_by_side.csv"
+    side_by_side_path = compare_dir / "test_predictions_side_by_side.csv"
     side_by_side.to_csv(side_by_side_path, index=False, encoding="utf-8-sig")
 
     side_by_side_errors = side_by_side[coerce_bool_series(side_by_side["has_error"])].copy()
-    side_by_side_errors_path = base_output_dir / "test_misclassified_side_by_side.csv"
+    side_by_side_errors_path = compare_dir / "test_misclassified_side_by_side.csv"
     side_by_side_errors.to_csv(side_by_side_errors_path, index=False, encoding="utf-8-sig")
 
     return {
@@ -333,6 +429,7 @@ def main() -> None:
 
     base_output_dir = Path(args.base_output_dir)
     summary_path = base_output_dir / "summary.json"
+    overview_path = base_output_dir / "run_overview.md"
 
     base_output_dir.mkdir(parents=True, exist_ok=True)
     shared_input_path, shared_split_manifest = prepare_shared_dataset(args, base_output_dir)
@@ -366,8 +463,24 @@ def main() -> None:
         text_col="__text",
         source_col="__source_name",
     )
+    summary["overview_path"] = write_run_overview(
+        base_output_dir,
+        summary=summary,
+        overview_path=overview_path,
+    )
     save_json(summary_path, summary)
-    emit(f"Dual-label training summary saved to {summary_path}")
+    emit("Dual-label training finished")
+    for label_name in ("broad", "strict"):
+        snapshot = summary["runs"].get(label_name, {}).get("metrics_snapshot", {})
+        test_snapshot = snapshot.get("test", {})
+        emit(
+            f"{label_name}: test_f1={_format_metric(test_snapshot.get('f1'))} "
+            f"precision={_format_metric(test_snapshot.get('precision'))} "
+            f"recall={_format_metric(test_snapshot.get('recall'))}"
+        )
+    emit(f"overview: {overview_path}")
+    emit(f"inspect: {summary['inspect_reports']['summary_md_path']}")
+    emit(f"summary_json: {summary_path}")
 
 
 if __name__ == "__main__":

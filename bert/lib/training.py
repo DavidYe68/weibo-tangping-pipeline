@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import os
 from dataclasses import asdict, dataclass
 from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional
@@ -227,6 +228,9 @@ def run_training(
     save_split(val_df, output_dir / "val_split.csv")
     save_split(test_df, output_dir / "test_split.csv")
 
+    # Avoid noisy background conversion attempts against Hub repos that only expose PyTorch weights.
+    os.environ.setdefault("DISABLE_SAFETENSORS_CONVERSION", "1")
+
     emit_fn(f"Loading tokenizer and model from {config.model_name_or_path}")
     tokenizer = AutoTokenizer.from_pretrained(
         config.model_name_or_path,
@@ -239,6 +243,7 @@ def run_training(
         config.model_name_or_path,
         num_labels=2,
         local_files_only=config.local_files_only,
+        use_safetensors=False,
     )
     model.config.id2label = {0: "无关", 1: "相关"}
     model.config.label2id = {"无关": 0, "相关": 1}
@@ -396,10 +401,12 @@ def run_training(
     save_predictions(test_predictions, test_predictions_path)
     save_misclassified(test_predictions, test_misclassified_path)
 
-    emit_fn(f"Best model saved to {best_model_dir}")
-    emit_fn(f"Metrics saved to {metrics_path}")
-    emit_fn(f"Test predictions saved to {test_predictions_path}")
-    emit_fn(f"Test misclassified rows saved to {test_misclassified_path}")
+    emit_fn(
+        f"Finished {source_label_col}: "
+        f"val_f1={val_metrics['f1']:.4f} "
+        f"test_f1={test_metrics['f1']:.4f} "
+        f"artifacts={output_dir}"
+    )
 
     return {
         "metrics_path": str(metrics_path.resolve()),
