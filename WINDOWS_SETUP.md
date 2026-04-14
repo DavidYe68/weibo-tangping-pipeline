@@ -25,7 +25,7 @@ pip install -r requirements.txt
 
 ## 3. 安装支持 CUDA 的 PyTorch
 
-如果你要跑 `bert/04_train_bert_classifier.py` 或 `bert/05_predict_bert_classifier.py`，再安装 GPU 版 PyTorch：
+如果你要跑 `bert/04_train_bert_classifier.py` 或 `bert/06_predict_bert_classifier.py`，再安装 GPU 版 PyTorch：
 
 ```powershell
 pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu126
@@ -84,7 +84,7 @@ python bert/04_train_bert_classifier.py --device cuda
 BERT 预测：
 
 ```powershell
-python bert/05_predict_bert_classifier.py --device cuda
+python bert/06_predict_bert_classifier.py --device cuda
 ```
 
 ## 6. 本地标注配置

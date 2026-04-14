@@ -2,12 +2,39 @@
 
 这个仓库现在适合作为“代码仓库”同步到 GitHub，用来在另一台机器上继续跑主流程、抽样、标注和 BERT 训练/预测。
 
+## 开发环境
+
+仓库根目录默认使用 `.venv` 作为 Python 虚拟环境。
+
+- 后文如果写 `python` / `pip`，默认都是在已激活 `.venv` 的前提下执行。
+- 对 Codex、Claude Code、Cursor 这类代理工具，更稳妥的写法是直接使用 `.venv/bin/python` 和 `.venv/bin/pip`，不要落到系统 Python。
+
+macOS / Linux：
+
+```bash
+python3 -m venv .venv
+source .venv/bin/activate
+python -m pip install --upgrade pip
+python -m pip install -r requirements.txt
+```
+
+Windows PowerShell：
+
+```powershell
+py -3.11 -m venv .venv
+.\.venv\Scripts\Activate.ps1
+python -m pip install --upgrade pip
+python -m pip install -r requirements.txt
+```
+
 ## 仓库包含什么
 
 - 主流程入口：`main.py`
 - 数据流水线：`scripts/pipeline/`
 - 抽样与标注：`bert/01_*`、`bert/02_*`、`bert/03_*`
-- BERT 训练与预测：`bert/04_*`、`bert/05_*`
+- BERT 训练：`bert/04_*`、`bert/05_*`
+- BERT 预测：`bert/06_*`
+- 主题/关键词/漂移分析：`bert/07_*`、`bert/08_*`、`bert/09_*`、`bert/10_*`
 - BERT 公共模块：`bert/lib/`
 - 依赖清单：`requirements.txt`
 
@@ -38,6 +65,8 @@
 ## 常用命令
 
 统一入口是 [`main.py`](main.py)。
+
+如果你没有先 `activate`，可以把下面的 `python` 换成 `.venv/bin/python`。
 
 ```bash
 python main.py run
