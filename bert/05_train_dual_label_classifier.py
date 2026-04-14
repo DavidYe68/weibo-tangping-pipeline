@@ -7,6 +7,7 @@ from typing import Any, Dict, List
 import pandas as pd
 
 from lib.collection_utils import load_text_collection_frame
+from lib.data_utils import drop_optional_training_metadata
 from lib.io_utils import save_json
 from lib.labels import normalize_label_value
 
@@ -120,6 +121,7 @@ def normalize_dual_frame(args: argparse.Namespace, path: Path) -> pd.DataFrame:
         sheet_name=args.sheet_name,
         text_col_hint=args.text_col,
     )
+    working = drop_optional_training_metadata(working)
     for label_col in (args.broad_col, args.strict_col):
         if label_col not in working.columns:
             raise ValueError(f"Required label column '{label_col}' not found in {path}")

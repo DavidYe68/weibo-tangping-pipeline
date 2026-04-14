@@ -12,7 +12,7 @@ from sklearn.metrics import accuracy_score, classification_report, confusion_mat
 from torch.utils.data import DataLoader
 from transformers import AutoModelForSequenceClassification, AutoTokenizer, get_linear_schedule_with_warmup
 
-from lib.data_utils import detect_text_column, load_training_dataframe
+from lib.data_utils import detect_text_column, drop_optional_training_metadata, load_training_dataframe
 from lib.io_utils import save_json
 from lib.labels import LABEL_CANDIDATES, detect_label_column, normalize_label_value
 from lib.runtime import iterate_loader, resolve_device, resolve_max_length, set_seed
@@ -106,7 +106,7 @@ def build_predictions_dataframe(
     probs: np.ndarray,
     preds: np.ndarray,
 ) -> pd.DataFrame:
-    result = df.copy()
+    result = drop_optional_training_metadata(df.copy())
     result["label_standard"] = label_col
     result["gold_label"] = result["label"].astype(int)
     result["gold_label_text"] = np.where(result["gold_label"] == 1, "相关", "无关")

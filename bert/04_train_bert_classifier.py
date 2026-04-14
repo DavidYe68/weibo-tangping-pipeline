@@ -7,6 +7,7 @@ from typing import Any, Dict, List
 import pandas as pd
 
 from lib.collection_utils import load_text_collection_frame
+from lib.data_utils import drop_optional_training_metadata
 from lib.io_utils import save_json
 from lib.labels import detect_label_column, normalize_label_value
 
@@ -111,6 +112,7 @@ def normalize_single_label_frame(args: argparse.Namespace, path: Path) -> pd.Dat
         sheet_name=args.sheet_name,
         text_col_hint=args.text_col,
     )
+    working = drop_optional_training_metadata(working)
     label_source = detect_label_column(
         working,
         args.label_col,

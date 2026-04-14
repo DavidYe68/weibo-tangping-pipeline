@@ -44,6 +44,15 @@ NON_TEXT_FALLBACK_EXCLUDE = {
     "tangping_related_label",
 }
 
+OPTIONAL_TRAINING_METADATA_COLUMNS = {
+    "评论数",
+    "点赞数",
+    "ip",
+    "source_file",
+    "len_gt_500",
+    "extra_col",
+}
+
 
 def make_unique_columns(columns: Sequence[Any]) -> List[str]:
     counts: dict[str, int] = {}
@@ -104,6 +113,13 @@ def load_training_dataframe(input_path: Path, sheet_name: Optional[str]) -> pd.D
     return df.reset_index(drop=True)
 
 
+def drop_optional_training_metadata(df: pd.DataFrame) -> pd.DataFrame:
+    drop_columns = [column for column in OPTIONAL_TRAINING_METADATA_COLUMNS if column in df.columns]
+    if not drop_columns:
+        return df
+    return df.drop(columns=drop_columns)
+
+
 def detect_text_column(df: pd.DataFrame, forced: Optional[str], *, source_name: str = "dataset") -> str:
     if forced:
         if forced not in df.columns:
@@ -132,4 +148,3 @@ def detect_text_column(df: pd.DataFrame, forced: Optional[str], *, source_name: 
     if scores[best_column] <= 0:
         raise ValueError("Detected text candidates, but all values are empty.")
     return best_column
-

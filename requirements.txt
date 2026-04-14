@@ -1,9 +1,12 @@
+bertopic>=0.16
 emoji>=2.10
+jieba>=0.42
 numpy>=1.26
 openpyxl>=3.1
 pandas>=2.2
 pyarrow>=15.0
 requests>=2.31
 scikit-learn>=1.4
+sentence-transformers>=2.7
 tqdm>=4.66
 transformers>=4.40
