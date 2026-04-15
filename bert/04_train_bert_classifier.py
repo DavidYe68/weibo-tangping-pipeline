@@ -18,86 +18,92 @@ def emit(message: str) -> None:
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
-        description="Train, validate, and test a BERT-style classifier for tangping relevance."
+        description=(
+            "训练单标签 BERT 分类器。"
+            "可直接读取一个或多个审核后的 CSV/XLSX，也可把部分文件固定到 train/val/test split。"
+        )
     )
     parser.add_argument(
         "--input_csv",
         nargs="*",
         default=None,
-        help="One or more CSV/XLSX files to merge before training. If omitted, falls back to bert/data/labeled_binary.csv when available.",
+        help=(
+            "一个或多个待合并并随机切分的 CSV/XLSX。"
+            "如果未提供，且 bert/data/labeled_binary.csv 存在，则回退到该默认文件。"
+        ),
     )
     parser.add_argument(
         "--train_csv",
         nargs="*",
         default=None,
-        help="CSV/XLSX files forced into the training split.",
+        help="强制放入训练集的 CSV/XLSX 文件。",
     )
     parser.add_argument(
         "--train_only_csv",
         nargs="*",
         default=None,
-        help="Alias of --train_csv for train-only data.",
+        help="--train_csv 的别名。",
     )
     parser.add_argument(
         "--val_csv",
         nargs="*",
         default=None,
-        help="CSV/XLSX files forced into the validation split.",
+        help="强制放入验证集的 CSV/XLSX 文件。",
     )
     parser.add_argument(
         "--test_csv",
         nargs="*",
         default=None,
-        help="CSV/XLSX files forced into the test split.",
+        help="强制放入测试集的 CSV/XLSX 文件。",
     )
     parser.add_argument(
         "--output_dir",
         default="bert/artifacts/tangping_bert",
-        help="Directory to save checkpoints, metrics, and predictions.",
+        help="保存 checkpoints、metrics 和 predictions 的目录；默认 bert/artifacts/tangping_bert。",
     )
     parser.add_argument(
         "--model_name_or_path",
         default="hfl/chinese-roberta-wwm-ext",
-        help="HF model name or local path for the base encoder.",
+        help="基础编码器的 Hugging Face 模型名或本地路径。",
     )
-    parser.add_argument("--text_col", default=None, help="Optional text column name.")
-    parser.add_argument("--label_col", default=None, help="Optional label column name.")
+    parser.add_argument("--text_col", default=None, help="可选，显式指定文本列名。")
+    parser.add_argument("--label_col", default=None, help="可选，显式指定标签列名。")
     parser.add_argument(
         "--split_col",
         default=None,
-        help="Optional split column with values train/val/test. If provided, skips random splitting.",
+        help="可选，显式指定 split 列；取值应为 train/val/test，传入后跳过随机切分。",
     )
     parser.add_argument(
         "--sheet_name",
         default=None,
-        help="Optional Excel sheet name. Uses the first sheet if omitted.",
+        help="可选 Excel sheet 名；不传时读取第一张表。",
     )
-    parser.add_argument("--max_length", type=int, default=128, help="Maximum token length.")
-    parser.add_argument("--batch_size", type=int, default=16, help="Batch size.")
-    parser.add_argument("--epochs", type=int, default=3, help="Training epochs.")
-    parser.add_argument("--learning_rate", type=float, default=2e-5, help="Learning rate.")
-    parser.add_argument("--weight_decay", type=float, default=0.01, help="Weight decay.")
-    parser.add_argument("--warmup_ratio", type=float, default=0.1, help="Warmup ratio.")
-    parser.add_argument("--max_grad_norm", type=float, default=1.0, help="Gradient clipping value.")
-    parser.add_argument("--val_size", type=float, default=0.1, help="Validation split ratio.")
-    parser.add_argument("--test_size", type=float, default=0.1, help="Test split ratio.")
+    parser.add_argument("--max_length", type=int, default=128, help="最大 token 长度；默认 128。")
+    parser.add_argument("--batch_size", type=int, default=16, help="batch size；默认 16。")
+    parser.add_argument("--epochs", type=int, default=3, help="训练轮数；默认 3。")
+    parser.add_argument("--learning_rate", type=float, default=2e-5, help="学习率；默认 2e-5。")
+    parser.add_argument("--weight_decay", type=float, default=0.01, help="weight decay；默认 0.01。")
+    parser.add_argument("--warmup_ratio", type=float, default=0.1, help="warmup 比例；默认 0.1。")
+    parser.add_argument("--max_grad_norm", type=float, default=1.0, help="梯度裁剪阈值；默认 1.0。")
+    parser.add_argument("--val_size", type=float, default=0.1, help="随机切分时的验证集比例；默认 0.1。")
+    parser.add_argument("--test_size", type=float, default=0.1, help="随机切分时的测试集比例；默认 0.1。")
     parser.add_argument(
         "--positive_threshold",
         type=float,
         default=0.5,
-        help="Probability threshold for the positive class.",
+        help="正类判定阈值；默认 0.5。",
     )
-    parser.add_argument("--seed", type=int, default=42, help="Random seed.")
+    parser.add_argument("--seed", type=int, default=42, help="随机种子；默认 42。")
     parser.add_argument(
         "--device",
         default="auto",
         choices=["auto", "cpu", "cuda", "mps"],
-        help="Training device.",
+        help="训练设备；默认 auto。",
     )
     parser.add_argument(
         "--local_files_only",
         action="store_true",
-        help="Only load model/tokenizer from local files.",
+        help="只从本地加载模型和 tokenizer。",
     )
     return parser.parse_args()
 

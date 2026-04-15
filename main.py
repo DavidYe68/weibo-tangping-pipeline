@@ -23,21 +23,21 @@ def emit_cli_progress(message: str) -> None:
 
 def main() -> int:
     parser = argparse.ArgumentParser(
-        description="统一数据流水线：run/full/status/export-csv",
+        description="主流程入口：处理 raw/，维护 data/processed/ 与 data/state/，并按需导出 CSV。",
     )
     parser.add_argument(
         "command",
         nargs="?",
         choices=["run", "full", "status", "export-csv"],
         default="run",
-        help="默认 run（增量）",
+        help="run=增量处理，full=全量重建，status=查看状态，export-csv=导出 CSV；默认 run。",
     )
     parser.add_argument(
         "target",
         nargs="?",
         choices=["all", "merged", "text"],
         default="all",
-        help="仅用于 export-csv，默认导出全部",
+        help="仅用于 export-csv：all=全部，merged=merged_dedup，text=text_dedup；默认 all。",
     )
     args = parser.parse_args()
 

@@ -16,27 +16,27 @@ def emit(message: str) -> None:
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
-        description="Normalize tangping labels into binary 1/0 values for BERT training."
+        description="把 labeled.csv 中的审核标签整理成单标签训练可用的二值标签。"
     )
     parser.add_argument(
         "--input_csv",
         default="bert/data/labeled.csv",
-        help="Input labeled CSV path.",
+        help="输入带标签的 CSV 路径；默认 bert/data/labeled.csv。",
     )
     parser.add_argument(
         "--output_csv",
         default="bert/data/labeled_binary.csv",
-        help="Output CSV path after label normalization.",
+        help="整理后的输出 CSV 路径；默认 bert/data/labeled_binary.csv。",
     )
     parser.add_argument(
         "--report_path",
         default="bert/data/labeled_binary_report.json",
-        help="Normalization report JSON path.",
+        help="整理报告 JSON 路径；默认 bert/data/labeled_binary_report.json。",
     )
     parser.add_argument(
         "--label_col",
         default=None,
-        help="Optional source label column. If omitted, auto-detect from common candidates.",
+        help="可选，显式指定来源标签列；不传则自动识别常见候选列。",
     )
     return parser.parse_args()
 

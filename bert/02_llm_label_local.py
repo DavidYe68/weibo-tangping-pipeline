@@ -583,43 +583,69 @@ def parse_args() -> argparse.Namespace:
 
     parser = argparse.ArgumentParser(
         description=(
-            "LLM pre-labeling for tangping relevance with Qwen labeler + optional fixer fallback. "
-            "Outputs are only a draft for human review, not final training labels."
+            "对 sample.csv 做 LLM 预标注，输出 labeled.csv 草稿。"
+            "结果只用于人工审核前的初筛，不应直接当作最终训练标签。"
         )
     )
-    parser.add_argument("--config", default=bootstrap_args.config)
-    parser.add_argument("--input", default="bert/data/sample.csv")
-    parser.add_argument("--output", default="bert/data/labeled.csv")
-    parser.add_argument("--report_path", default="bert/data/labeling_report.json")
-    parser.add_argument("--text_col", default=None)
-    parser.add_argument("--labeler_provider", default="qwen_openai", choices=["qwen_openai", "openai_compatible", "ollama"])
+    parser.add_argument("--config", default=bootstrap_args.config, help="可选配置文件路径。")
+    parser.add_argument("--input", default="bert/data/sample.csv", help="输入抽样 CSV；默认 bert/data/sample.csv。")
+    parser.add_argument("--output", default="bert/data/labeled.csv", help="输出预标注 CSV；默认 bert/data/labeled.csv。")
+    parser.add_argument(
+        "--report_path",
+        default="bert/data/labeling_report.json",
+        help="预标注报告 JSON 路径；默认 bert/data/labeling_report.json。",
+    )
+    parser.add_argument("--text_col", default=None, help="可选，显式指定文本列名。")
+    parser.add_argument(
+        "--labeler_provider",
+        default="qwen_openai",
+        choices=["qwen_openai", "openai_compatible", "ollama"],
+        help="主标注模型的 provider；默认 qwen_openai。",
+    )
     parser.add_argument(
         "--labeler_base_url",
         default=os.getenv("QWEN_BASE_URL", DEFAULT_QWEN_BASE_URL),
+        help="主标注模型的 base URL。",
     )
     parser.add_argument(
         "--labeler_api_key",
         default=get_first_env("DASHSCOPE_API_KEY", "QWEN_API_KEY", "OPENAI_API_KEY"),
+        help="主标注模型的 API key；未传时尝试从环境变量读取。",
     )
-    parser.add_argument("--labeler_model", default=os.getenv("QWEN_LABELER_MODEL", "qwen-coder-plus-latest"))
-    parser.add_argument("--fixer_provider", default="ollama", choices=["ollama", "qwen_openai", "openai_compatible"])
-    parser.add_argument("--fixer_base_url", default=None)
+    parser.add_argument(
+        "--labeler_model",
+        default=os.getenv("QWEN_LABELER_MODEL", "qwen-coder-plus-latest"),
+        help="主标注模型名；默认 qwen-coder-plus-latest。",
+    )
+    parser.add_argument(
+        "--fixer_provider",
+        default="ollama",
+        choices=["ollama", "qwen_openai", "openai_compatible"],
+        help="JSON 修复器 provider；默认 ollama。",
+    )
+    parser.add_argument("--fixer_base_url", default=None, help="JSON 修复器的 base URL。")
     parser.add_argument(
         "--fixer_api_key",
         default=get_first_env("FIXER_API_KEY", "DASHSCOPE_API_KEY", "QWEN_API_KEY", "OPENAI_API_KEY"),
+        help="JSON 修复器 API key；未传时尝试从环境变量读取。",
     )
-    parser.add_argument("--base_url", default="http://localhost:11434")
-    parser.add_argument("--fixer_model", default="qwen3:8b")
-    parser.add_argument("--max_chars", type=int, default=800)
-    parser.add_argument("--temperature", type=float, default=0.0)
-    parser.add_argument("--timeout", type=int, default=120)
-    parser.add_argument("--fix_json", type=str2bool, default=True)
-    parser.add_argument("--save_raw", type=str2bool, default=True)
-    parser.add_argument("--save_fixed_raw", type=str2bool, default=True)
-    parser.add_argument("--save_every", type=int, default=100)
-    parser.add_argument("--max_workers", type=int, default=2)
-    parser.add_argument("--request_retries", type=int, default=2)
-    parser.add_argument("--retry_backoff_sec", type=float, default=3.0)
+    parser.add_argument("--base_url", default="http://localhost:11434", help="兼容旧参数名，等同于 fixer 的本地 base URL。")
+    parser.add_argument("--fixer_model", default="qwen3:8b", help="JSON 修复器模型名；默认 qwen3:8b。")
+    parser.add_argument("--max_chars", type=int, default=800, help="单条文本送入模型前的最大字符数。")
+    parser.add_argument("--temperature", type=float, default=0.0, help="采样温度；默认 0。")
+    parser.add_argument("--timeout", type=int, default=120, help="单次请求超时秒数；默认 120。")
+    parser.add_argument("--fix_json", type=str2bool, default=True, help="是否启用 JSON 修复步骤；默认 true。")
+    parser.add_argument("--save_raw", type=str2bool, default=True, help="是否保存主标注模型原始输出；默认 true。")
+    parser.add_argument(
+        "--save_fixed_raw",
+        type=str2bool,
+        default=True,
+        help="是否保存修复器原始输出；默认 true。",
+    )
+    parser.add_argument("--save_every", type=int, default=100, help="每处理多少条落盘一次中间结果；默认 100。")
+    parser.add_argument("--max_workers", type=int, default=2, help="并发 worker 数；默认 2。")
+    parser.add_argument("--request_retries", type=int, default=2, help="请求失败后的重试次数；默认 2。")
+    parser.add_argument("--retry_backoff_sec", type=float, default=3.0, help="重试退避秒数；默认 3。")
     parser.set_defaults(**config_defaults)
     return parser.parse_args()
 

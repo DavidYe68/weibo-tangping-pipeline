@@ -11,47 +11,51 @@ def emit(message: str) -> None:
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
-        description="Batch prediction on parquet files with a fine-tuned BERT classifier."
+        description=(
+            "用已训练好的 BERT 分类器对 parquet 批量预测。"
+            "如果后续要进入 07-10 broad 分析链，建议把 --output_dir 显式设为 "
+            "data/processed/text_dedup_predicted_broad。"
+        )
     )
     parser.add_argument(
         "--model_dir",
         default="bert/artifacts/tangping_bert/best_model",
-        help="Directory containing the fine-tuned model and tokenizer.",
+        help="已训练模型和 tokenizer 所在目录；默认 bert/artifacts/tangping_bert/best_model。",
     )
     parser.add_argument(
         "--input_pattern",
         default="data/processed/text_dedup/*.parquet",
-        help="Glob pattern for parquet files to classify.",
+        help="待预测 parquet 的 glob 模式；默认 data/processed/text_dedup/*.parquet。",
     )
     parser.add_argument(
         "--output_dir",
         default="data/processed/text_dedup_predicted",
-        help="Directory for predicted parquet files.",
+        help="预测结果输出目录；默认 data/processed/text_dedup_predicted。",
     )
-    parser.add_argument("--text_col", default=None, help="Optional text column name.")
-    parser.add_argument("--batch_size", type=int, default=64, help="Batch size for prediction.")
-    parser.add_argument("--max_length", type=int, default=128, help="Maximum token length.")
+    parser.add_argument("--text_col", default=None, help="可选，显式指定文本列名。")
+    parser.add_argument("--batch_size", type=int, default=64, help="预测 batch size；默认 64。")
+    parser.add_argument("--max_length", type=int, default=128, help="最大 token 长度；默认 128。")
     parser.add_argument(
         "--positive_threshold",
         type=float,
         default=0.5,
-        help="Probability threshold for the positive class.",
+        help="正类判定阈值；默认 0.5。",
     )
     parser.add_argument(
         "--device",
         default="auto",
         choices=["auto", "cpu", "cuda", "mps"],
-        help="Prediction device.",
+        help="预测设备；默认 auto。",
     )
     parser.add_argument(
         "--local_files_only",
         action="store_true",
-        help="Only load model/tokenizer from local files.",
+        help="只从本地加载模型和 tokenizer。",
     )
     parser.add_argument(
         "--only_positive",
         action="store_true",
-        help="If set, only keep rows predicted as positive in the output files.",
+        help="如果传入，只保留预测为正类的行。",
     )
     return parser.parse_args()
 

@@ -1,26 +1,24 @@
 # BERT 工作流说明
 
-`bert/` 现在按更贴近实际研究流程的方式组织：
-
-- LLM 标注只是初筛草稿，后续必须人工审核。
-- 训练脚本不再假设固定文件名、固定来源或固定实验协议。
-- 你手上有多少份已审核 CSV/XLSX 都可以，是否合并、是否单独留作测试、哪些只进训练集，都由命令行参数决定。
+本手册负责 `bert/` 目录下的完整下游流程：抽样、预标注、标签整理、训练、全量预测，以及 `07-10` 的 broad 分析链。主流程 `raw/ -> data/processed/` 请看 [USER_MANUAL.md](/Users/apple/Local/fdurop/code/result/USER_MANUAL.md)。
 
 ## 运行前先确认环境
 
 默认使用仓库根目录下的 `.venv`。
 
-- 如果你已经 `source .venv/bin/activate`，下面示例里的 `python3` 可以直接照抄。
-- 如果你是 Codex、Claude Code、Cursor 之类的代理工具，建议直接写成 `.venv/bin/python`，避免误用系统环境。
+- macOS / Linux：`.venv/bin/python`
+- Windows PowerShell：`.\.venv\Scripts\python.exe`
+
+下面示例统一采用 macOS / Linux 写法；Windows 下把 `.venv/bin/python` 替换为 `.\.venv\Scripts\python.exe` 即可。
 
 ## 核心原则
 
-1. `02_llm_label_local.py` 只负责生成预标注，不负责替代人工判断。
-2. 进入训练阶段的数据，默认都应当是“人工复核过”的 CSV/XLSX。
+1. `02_llm_label_local.py` 只负责生成预标注草稿，不负责替代人工判断。
+2. 进入训练阶段的数据，默认都应当是人工复核过的 CSV/XLSX。
 3. `04_train_bert_classifier.py` 负责单标签训练。
-4. `05_train_dual_label_classifier.py` 负责 `broad` / `strict` 双标签训练。
+4. `05_train_dual_label_classifier.py` 负责 `broad / strict` 双标签训练。
 5. `06_predict_bert_classifier.py` 负责把训练好的模型批量打到全量 parquet 上。
-6. `07` 到 `10` 是“全量 broad 语义分析链路”，默认围绕 `broad` 预测结果展开。
+6. `07-10` 是围绕 broad 预测结果展开的分析链。
 
 ## 目录概览
 
@@ -42,45 +40,55 @@ bert/
 └── artifacts/       模型、评估结果、预测结果、分析结果
 ```
 
-如果按实验阶段来理解：
-
-- `01-03`：样本抽取、预标注、标签整理。
-- `04-05`：模型训练与评估。
-- `06`：全量预测。
-- `07-10`：主题、语义邻域和时间漂移分析。
-
 ## 最常见的真实流程
 
 ### 1. 从 parquet 抽样
 
+默认输入是 `data/processed/text_dedup/*.parquet`，默认输出是 `bert/data/sample.csv`。
+
 ```bash
-python3 bert/01_stratified_sampling.py \
+.venv/bin/python bert/01_stratified_sampling.py \
   --input "data/processed/text_dedup/*.parquet" \
-  --output "bert/data/sample_review.csv" \
+  --output "bert/data/sample.csv" \
   --n 6000 \
   --report_path "bert/data/sampling_report.json"
 ```
 
 ### 2. 用 LLM 做预标注
 
+默认输入是 `bert/data/sample.csv`，默认输出是 `bert/data/labeled.csv`。
+
 ```bash
-python3 bert/02_llm_label_local.py \
-  --input "bert/data/sample_review.csv" \
-  --output "bert/data/sample_prelabel.csv" \
+.venv/bin/python bert/02_llm_label_local.py \
+  --input "bert/data/sample.csv" \
+  --output "bert/data/labeled.csv" \
   --report_path "bert/data/labeling_report.json"
 ```
 
 说明：
 
 - 这一步的输出只能当“待审核草稿”。
+- 如果你不改参数，`02` 的默认输出可以直接接 `03` 的默认输入。
 - 请先人工审核，再把结果拿去训练。
 
-### 3. 单标签训练
+### 3. 标签整理
+
+如果你的训练任务是单标签二分类，可以先把审核结果整理成标准二值标签：
+
+```bash
+.venv/bin/python bert/03_normalize_labels.py \
+  --input_csv "bert/data/labeled.csv" \
+  --output_csv "bert/data/labeled_binary.csv"
+```
+
+这一步主要服务于单标签训练；如果你已经准备好了 `broad / strict` 两列，可以直接进入 `05`。
+
+### 4. 单标签训练
 
 如果你的审核结果只有一套标签，例如 `label` / `tangping_related` / `tangping_related_label`：
 
 ```bash
-python3 bert/04_train_bert_classifier.py \
+.venv/bin/python bert/04_train_bert_classifier.py \
   --input_csv "bert/data/reviewed_a.csv" "bert/data/reviewed_b.csv" \
   --output_dir "bert/artifacts/single_label_run"
 ```
@@ -88,26 +96,26 @@ python3 bert/04_train_bert_classifier.py \
 如果你想显式指定哪个文件只进训练、哪个文件单独留作测试：
 
 ```bash
-python3 bert/04_train_bert_classifier.py \
+.venv/bin/python bert/04_train_bert_classifier.py \
   --train_csv "bert/data/reviewed_train_extra.csv" \
   --input_csv "bert/data/reviewed_pool_a.csv" "bert/data/reviewed_pool_b.csv" \
   --test_csv "bert/data/reviewed_holdout.csv" \
   --output_dir "bert/artifacts/single_label_holdout"
 ```
 
-这里的规则是：
+规则：
 
 - `--input_csv`：这些文件会先合并，再随机切成 train/val/test。
 - `--train_csv` / `--train_only_csv`：这些文件只进训练集。
 - `--val_csv`：这些文件只进验证集。
 - `--test_csv`：这些文件只进测试集。
 
-### 4. 双标签训练
+### 5. 双标签训练
 
 如果你的人工审核表里同时有 `broad` 和 `strict` 两列：
 
 ```bash
-python3 bert/05_train_dual_label_classifier.py \
+.venv/bin/python bert/05_train_dual_label_classifier.py \
   --input_path "bert/data/reviewed_part1.csv" "bert/data/reviewed_part2.csv" \
   --base_output_dir "bert/artifacts/dual_label_run"
 ```
@@ -115,7 +123,7 @@ python3 bert/05_train_dual_label_classifier.py \
 如果你想把某一份文件固定留作测试，另一些只进训练：
 
 ```bash
-python3 bert/05_train_dual_label_classifier.py \
+.venv/bin/python bert/05_train_dual_label_classifier.py \
   --input_path "bert/data/reviewed_pool_a.csv" "bert/data/reviewed_pool_b.csv" \
   --train_path "bert/data/reviewed_manual_boost.csv" \
   --test_path "bert/data/reviewed_external_test.csv" \
@@ -128,8 +136,6 @@ python3 bert/05_train_dual_label_classifier.py \
 - `--train_path`：只进训练集。
 - `--val_path`：只进验证集。
 - `--test_path`：只进测试集。
-
-如果你想“分开测试多个来源”，最直接的做法就是多跑几次 `05`，每次把不同来源放到 `--test_path`。
 
 ### 关于固定 split 参数
 
@@ -206,7 +212,7 @@ python3 bert/05_train_dual_label_classifier.py \
 
 ## 进入 07-10 之前
 
-如果你现在已经在 Windows 机器上完成了：
+如果你已经完成：
 
 1. 主流程产出 `data/processed/text_dedup/*.parquet`
 2. 人工审核
@@ -214,19 +220,17 @@ python3 bert/05_train_dual_label_classifier.py \
 
 那么接下来建议先跑一次 `06`，把 `broad` 模型打到全量语料上。
 
-### 5. 用 broad 模型做全量预测
+### 6. 用 broad 模型做全量预测
 
-典型命令：
+`06_predict_bert_classifier.py` 的默认输出目录是 `data/processed/text_dedup_predicted/`，但如果后续要进入 `07-10`，建议显式写成 `data/processed/text_dedup_predicted_broad`，这样能直接对齐 `07` 的默认输入。
 
 ```bash
-python3 bert/06_predict_bert_classifier.py \
+.venv/bin/python bert/06_predict_bert_classifier.py \
   --model_dir "bert/artifacts/dual_label_run/broad/best_model" \
   --input_pattern "data/processed/text_dedup/*.parquet" \
   --output_dir "data/processed/text_dedup_predicted_broad" \
   --device cuda
 ```
-
-这里建议显式把输出目录写成 `data/processed/text_dedup_predicted_broad`，因为 `07_build_broad_analysis_base.py` 默认就是从这里读。
 
 `06` 常见输出列包括：
 
@@ -236,11 +240,9 @@ python3 bert/06_predict_bert_classifier.py \
 - `pred_prob_0`
 - `pred_confidence`
 
-如果你在 `06` 里用了默认输出目录 `data/processed/text_dedup_predicted/`，也没问题，只要在 `07` 里同步改 `--input_pattern`。
-
 ## 07-10 分析链路
 
-### 6. `07_build_broad_analysis_base.py`
+### 7. `07_build_broad_analysis_base.py`
 
 作用：
 
@@ -253,13 +255,13 @@ python3 bert/06_predict_bert_classifier.py \
 默认命令：
 
 ```bash
-python3 bert/07_build_broad_analysis_base.py
+.venv/bin/python bert/07_build_broad_analysis_base.py
 ```
 
 如果你的预测文件放在别的位置：
 
 ```bash
-python3 bert/07_build_broad_analysis_base.py \
+.venv/bin/python bert/07_build_broad_analysis_base.py \
   --input_pattern "data/processed/text_dedup_predicted/*.parquet" \
   --output_path "bert/artifacts/broad_analysis/analysis_base.parquet"
 ```
@@ -275,14 +277,7 @@ python3 bert/07_build_broad_analysis_base.py \
 - `bert/artifacts/broad_analysis/analysis_base.parquet`
 - `bert/artifacts/broad_analysis/analysis_base_report.json`
 
-其中 `analysis_base_report.json` 会额外给出：
-
-- `rows_by_ip`
-- `rows_by_period_and_ip`
-- `missing_ip_rows_after_filter`
-- `missing_ip_rate_after_filter`
-
-### 7. `08_topic_model_bertopic.py`
+### 8. `08_topic_model_bertopic.py`
 
 作用：
 
@@ -294,13 +289,13 @@ python3 bert/07_build_broad_analysis_base.py \
 默认命令：
 
 ```bash
-python3 bert/08_topic_model_bertopic.py
+.venv/bin/python bert/08_topic_model_bertopic.py
 ```
 
 常用变体：
 
 ```bash
-python3 bert/08_topic_model_bertopic.py \
+.venv/bin/python bert/08_topic_model_bertopic.py \
   --time_granularity quarter \
   --min_topic_size 50 \
   --top_n_words 15 \
@@ -312,6 +307,8 @@ python3 bert/08_topic_model_bertopic.py \
 常用可选参数：
 
 - `--device auto|cpu|cuda|mps`：控制 sentence-transformers 的编码设备
+- `--embedding_model`：指定模型名或本地目录
+- `--local_files_only`：只从本地加载 embedding 资源
 - `--resume`：如果已有 embedding checkpoint，则直接续跑
 - `--checkpoint_dir`：自定义 checkpoint 目录
 - `--ip_col`：手动指定 IP 列名
@@ -328,13 +325,7 @@ python3 bert/08_topic_model_bertopic.py \
 - `bert/artifacts/broad_analysis/topic_model/topic_share_by_period_and_ip_and_keyword.csv`
 - `bert/artifacts/broad_analysis/topic_model/topic_model_summary.json`
 
-其中最适合直接做比较的是这三张表：
-
-- `topic_share_by_period.csv`：只看时间维度
-- `topic_share_by_period_and_ip.csv`：比较不同 IP 在各时间段的 topic 分布
-- `topic_share_by_period_and_ip_and_keyword.csv`：在 `关键词 + 时间 + IP` 的细粒度下比较 topic 分布
-
-### 8. `09_keyword_semantic_analysis.py`
+### 9. `09_keyword_semantic_analysis.py`
 
 作用：
 
@@ -345,13 +336,13 @@ python3 bert/08_topic_model_bertopic.py \
 默认命令：
 
 ```bash
-python3 bert/09_keyword_semantic_analysis.py
+.venv/bin/python bert/09_keyword_semantic_analysis.py
 ```
 
 常用变体：
 
 ```bash
-python3 bert/09_keyword_semantic_analysis.py \
+.venv/bin/python bert/09_keyword_semantic_analysis.py \
   --time_granularity quarter \
   --min_doc_freq 10 \
   --top_k_terms 80 \
@@ -366,7 +357,7 @@ python3 bert/09_keyword_semantic_analysis.py \
 - `bert/artifacts/broad_analysis/semantic_analysis/tokenized_analysis_base.parquet`
 - `bert/artifacts/broad_analysis/semantic_analysis/semantic_analysis_summary.json`
 
-### 9. `10_concept_drift_analysis.py`
+### 10. `10_concept_drift_analysis.py`
 
 作用：
 
@@ -378,13 +369,13 @@ python3 bert/09_keyword_semantic_analysis.py \
 默认命令：
 
 ```bash
-python3 bert/10_concept_drift_analysis.py
+.venv/bin/python bert/10_concept_drift_analysis.py
 ```
 
 常用变体：
 
 ```bash
-python3 bert/10_concept_drift_analysis.py \
+.venv/bin/python bert/10_concept_drift_analysis.py \
   --time_granularity quarter \
   --top_n 30
 ```
@@ -411,7 +402,7 @@ python3 bert/10_concept_drift_analysis.py \
 - `sentence-transformers`
 - `jieba`
 
-它们已经写在根目录 [`requirements.txt`](../requirements.txt) 里，但第一次运行 embedding 模型时，通常还会下载模型权重。
+它们已经写在根目录 [`requirements.txt`](/Users/apple/Local/fdurop/code/result/requirements.txt) 里，但第一次运行 embedding 模型时，通常还会下载模型权重。
 
 如果你的 Windows 机器联网：
 
@@ -427,12 +418,11 @@ python3 bert/10_concept_drift_analysis.py \
 
 更稳妥的习惯是：
 
-1. `01` 抽样。
-2. `02` 预标注。
-3. 人工审核。
-4. 审核后的多个 CSV/XLSX 直接喂给 `04` 或 `05`。
-5. 用 `05` 产出的 `broad/best_model` 跑 `06` 全量预测。
-6. 再顺序跑 `07`、`08`、`09`、`10`。
-7. 需要换测试集或换分析口径时，只改命令参数，不改脚本逻辑。
-
-这套方式比维护一堆固定案例更稳，也更符合真实研究流程。
+1. 先把主流程跑到 `data/processed/text_dedup/`。
+2. 用 `01` 抽样。
+3. 用 `02` 生成预标注草稿。
+4. 人工审核。
+5. 单标签任务走 `03 -> 04`，双标签任务直接走 `05`。
+6. 用 `05` 产出的 `broad/best_model` 跑 `06` 全量预测。
+7. 再顺序跑 `07`、`08`、`09`、`10`。
+8. 需要换测试集或换分析口径时，只改命令参数，不改脚本逻辑。

@@ -1,31 +1,29 @@
-# 完整使用手册
+# 主流程使用手册
 
-本手册说明这个项目的数据组织方式、主流程入口和实验运行步骤。当前目录约定如下：
+本手册只负责说明项目的主流程，也就是从 `raw/` 原始 CSV 到 `data/processed/`、`data/state/`、`data/reports/`、`data/exports/` 的这一段。抽样、预标注、训练、预测和 `07-10` 分析链请看 [bert/README.md](/Users/apple/Local/fdurop/code/result/bert/README.md)。
+
+## 1. 目录约定
+
+当前主流程依赖的核心目录如下：
 
 - 唯一源数据目录：`raw/`
-- 历史源数据归档目录：`archive/raw_data_legacy/`
-- 历史报告归档目录：`archive/reports_legacy/`
-- 唯一主流程入口：`main.py`
-- 唯一内部处理目录：`data/processed/`
-- 唯一状态目录：`data/state/`
-- 唯一报告目录：`data/reports/`
-- 唯一导出目录：`data/exports/`
-- 内部存储统一优先使用 `parquet`
+- 主流程入口：`main.py`
+- 主流程处理目录：`data/processed/`
+- 主流程状态目录：`data/state/`
+- 主流程报告目录：`data/reports/`
+- 主流程导出目录：`data/exports/`
+- 抽样和标注数据目录：`bert/data/`
+- 训练和分析产物目录：`bert/artifacts/`
 
-## 1. 目录结构
+目录结构可以粗看成：
 
 ```text
 result/
-├── raw/                         # 源数据
+├── raw/                         源数据
 ├── archive/
-│   └── raw_data_legacy/         # 历史源数据归档
-│   └── reports_legacy/          # 历史报告归档
+│   ├── raw_data_legacy/         历史源数据归档
+│   └── reports_legacy/          历史报告归档
 ├── data/
-│   ├── bert/
-│   │   ├── sample.csv
-│   │   ├── labeled.csv
-│   │   ├── labeled_binary.csv
-│   │   └── *.json
 │   ├── processed/
 │   │   ├── merged_dedup/
 │   │   ├── preprocessed/
@@ -34,24 +32,37 @@ result/
 │   ├── reports/
 │   └── exports/
 ├── scripts/
-│   ├── pipeline/
-│   │   ├── s01_core.py
-│   │   ├── s02_merge.py
-│   │   ├── s03_dedup.py
-│   │   └── s04_preprocess.py
+│   └── pipeline/
 ├── bert/
-│   ├── 01_stratified_sampling.py
-│   └── 02_llm_label_local.py
+│   ├── data/
+│   ├── artifacts/
+│   └── README.md
 ├── main.py
-├── README.md
 └── USER_MANUAL.md
 ```
 
-## 2. 源数据要求
+说明：
 
-主流程从 `raw/` 递归扫描 CSV。
+- `bert/data/` 和 `bert/artifacts/` 不属于主流程内部目录，但会消费主流程生成的 `text_dedup`。
+- `archive/` 下的内容主要是历史归档，不参与当前正式流程。
 
-可识别模式：
+## 2. 命令写法
+
+本仓库默认使用根目录下的 `.venv`。下面示例统一采用 macOS / Linux 写法：
+
+```bash
+.venv/bin/python ...
+```
+
+如果你在 Windows PowerShell，请把它替换为：
+
+```powershell
+.\.venv\Scripts\python.exe ...
+```
+
+## 3. 源数据要求
+
+主流程从 `raw/` 递归扫描 CSV，识别模式如下：
 
 `.../csv/{keyword}/**/*.csv`
 
@@ -67,9 +78,11 @@ result/
 - 如果后续目录中存在年、月，脚本会提取它们用于排序
 - 文件名数字部分会作为日排序参考
 
-## 3. 主流程概念
+原始数据路径最好能稳定反映关键词来源，否则后续 `keyword` 元信息会不完整。
 
-主流程分三层结果：
+## 4. 主流程三层产物
+
+主流程会依次生成三层结果：
 
 1. `merged_dedup`
 2. `preprocessed`
@@ -77,19 +90,21 @@ result/
 
 含义如下：
 
-- `merged_dedup`: 从 `raw/` 读取原始 CSV，补充 `keyword` 和 `source_file`，按 `id` 增量去重后的主表
-- `preprocessed`: 对新增去重数据做文本清洗后的结果
-- `text_dedup`: 对预处理结果按 `cleaned_text` 再做增量文本去重后的结果
+- `merged_dedup`：从 `raw/` 读取原始 CSV，补充 `keyword` 和 `source_file`，按 `id` 增量去重后的主表
+- `preprocessed`：对新增去重数据做文本清洗后的结果
+- `text_dedup`：对预处理结果按 `cleaned_text` 再做增量文本去重后的结果
 
-## 4. 统一命令入口
+其中 `data/processed/text_dedup/` 是后续抽样、训练和分析最常用的输入。
 
-统一入口文件是 [main.py](main.py)。
+## 5. 统一命令入口
 
-### 4.1 增量运行
+统一入口文件是 [`main.py`](/Users/apple/Local/fdurop/code/result/main.py)。
+
+### 5.1 增量运行
 
 ```bash
-python main.py
-python main.py run
+.venv/bin/python main.py
+.venv/bin/python main.py run
 ```
 
 作用：
@@ -108,10 +123,10 @@ python main.py run
 - 修改了部分 raw 文件
 - 想在现有处理结果基础上继续追加
 
-### 4.2 全量重建
+### 5.2 全量重建
 
 ```bash
-python main.py full
+.venv/bin/python main.py full
 ```
 
 作用：
@@ -130,6 +145,8 @@ python main.py full
 
 - `raw/`
 - 仓库中的代码文件
+- `bert/data/`
+- `bert/artifacts/`
 
 适用场景：
 
@@ -137,10 +154,10 @@ python main.py full
 - 状态文件不可信
 - 希望完全重算历史数据
 
-### 4.3 查看状态
+### 5.3 查看状态
 
 ```bash
-python main.py status
+.venv/bin/python main.py status
 ```
 
 输出信息包括：
@@ -152,12 +169,12 @@ python main.py status
 - 最近一次运行模式和结束时间
 - 关键路径
 
-### 4.4 导出 CSV
+### 5.4 导出 CSV
 
 ```bash
-python main.py export-csv
-python main.py export-csv merged
-python main.py export-csv text
+.venv/bin/python main.py export-csv
+.venv/bin/python main.py export-csv merged
+.venv/bin/python main.py export-csv text
 ```
 
 导出位置：
@@ -170,32 +187,26 @@ python main.py export-csv text
 - 主流程内部存储仍然是 parquet
 - CSV 只用于交换、人工查看或兼容下游工具
 
-## 5. 脚本分组
+## 6. 主流程相关脚本
 
-主流程相关脚本集中放在 `scripts/pipeline/`：
+主流程相关脚本集中放在 [`scripts/pipeline/`](/Users/apple/Local/fdurop/code/result/scripts/pipeline)：
 
-- [scripts/pipeline/s01_core.py](scripts/pipeline/s01_core.py)
-- [scripts/pipeline/s02_merge.py](scripts/pipeline/s02_merge.py)
-- [scripts/pipeline/s03_dedup.py](scripts/pipeline/s03_dedup.py)
-- [scripts/pipeline/s04_preprocess.py](scripts/pipeline/s04_preprocess.py)
+- [scripts/pipeline/s01_core.py](/Users/apple/Local/fdurop/code/result/scripts/pipeline/s01_core.py)
+- [scripts/pipeline/s02_merge.py](/Users/apple/Local/fdurop/code/result/scripts/pipeline/s02_merge.py)
+- [scripts/pipeline/s03_dedup.py](/Users/apple/Local/fdurop/code/result/scripts/pipeline/s03_dedup.py)
+- [scripts/pipeline/s04_preprocess.py](/Users/apple/Local/fdurop/code/result/scripts/pipeline/s04_preprocess.py)
 
-例如：
+一般情况下优先使用 [`main.py`](/Users/apple/Local/fdurop/code/result/main.py)。只有在你明确想从某个阶段单独查看或调试时，才需要直接跑这些分组脚本。
 
-```bash
-python scripts/pipeline/s02_merge.py run
-python scripts/pipeline/s03_dedup.py status
-python scripts/pipeline/s04_preprocess.py export-csv text
-```
+## 7. 内部数据说明
 
-## 6. 内部数据说明
-
-### 6.1 merged_dedup
+### 7.1 `merged_dedup`
 
 目录：
 
 - `data/processed/merged_dedup/part-*.parquet`
 
-默认列：
+常见列：
 
 - `id`
 - `微博正文`
@@ -213,13 +224,13 @@ python scripts/pipeline/s04_preprocess.py export-csv text
 - 这是按 `id` 去重后的主表
 - `source_file` 记录原始文件相对路径
 
-### 6.2 preprocessed
+### 7.2 `preprocessed`
 
 目录：
 
 - `data/processed/preprocessed/part-*.parquet`
 
-默认列：
+常见列：
 
 - `id`
 - `cleaned_text`
@@ -239,7 +250,7 @@ python scripts/pipeline/s04_preprocess.py export-csv text
 - `cleaned_text`：emoji 统一替换成 `[emoji]`
 - `cleaned_text_with_emoji`：emoji 转成文字描述
 
-### 6.3 text_dedup
+### 7.3 `text_dedup`
 
 目录：
 
@@ -248,11 +259,11 @@ python scripts/pipeline/s04_preprocess.py export-csv text
 说明：
 
 - 基于 `preprocessed` 的 `cleaned_text` 做增量文本去重
-- 这是后续采样与标注最常用的输入
+- 这是后续抽样、标注、训练和 broad 分析链的标准输入
 
-## 7. 状态文件说明
+## 8. 状态文件说明
 
-### 7.1 raw_manifest.json
+### 8.1 `raw_manifest.json`
 
 路径：
 
@@ -263,7 +274,7 @@ python scripts/pipeline/s04_preprocess.py export-csv text
 - 记录每个 raw CSV 的 `size`、`mtime_ns`、`keyword`
 - 用于判断哪些文件发生了变化
 
-### 7.2 id_hashes.txt
+### 8.2 `id_hashes.txt`
 
 路径：
 
@@ -274,7 +285,7 @@ python scripts/pipeline/s04_preprocess.py export-csv text
 - 保存已出现 `id` 的哈希
 - 用于增量 `id` 去重
 
-### 7.3 text_hashes.txt
+### 8.3 `text_hashes.txt`
 
 路径：
 
@@ -285,7 +296,7 @@ python scripts/pipeline/s04_preprocess.py export-csv text
 - 保存已出现 `cleaned_text` 的哈希
 - 用于增量文本去重
 
-### 7.4 pipeline_last_run.json
+### 8.4 `pipeline_last_run.json`
 
 路径：
 
@@ -295,175 +306,53 @@ python scripts/pipeline/s04_preprocess.py export-csv text
 
 - 记录最近一次运行模式、处理文件数、写出分片、累计行数等
 
-## 8. 下游脚本
+## 9. 和下游流程的衔接
 
-### 8.1 bert/01_stratified_sampling.py
+主流程结束后，后续一般从这里开始：
 
-命令：
+1. 用 [`bert/01_stratified_sampling.py`](/Users/apple/Local/fdurop/code/result/bert/01_stratified_sampling.py) 从 `data/processed/text_dedup/*.parquet` 抽样
+2. 用 [`bert/02_llm_label_local.py`](/Users/apple/Local/fdurop/code/result/bert/02_llm_label_local.py) 生成预标注草稿
+3. 人工审核样本
+4. 用 `04` 或 `05` 训练模型
+5. 用 `06` 对全量 parquet 做预测
+6. 顺序运行 `07-10`
 
-```bash
-python bert/01_stratified_sampling.py
-```
+这些步骤的详细命令、参数和输出见 [bert/README.md](/Users/apple/Local/fdurop/code/result/bert/README.md)。
 
-默认行为：
+## 10. 迁移后的注意事项
 
-- 从 `data/processed/text_dedup/*.parquet` 读取
-- 输入默认视为已经完成文本去重，不会在抽样阶段再次去重
-- 按月份、keyword、文本长度分层抽样
-- 输出 `bert/data/sample.csv`
-- 同时输出 `bert/data/sampling_report.json`
-
-常用参数：
-
-```bash
-python bert/01_stratified_sampling.py --n 6000
-python bert/01_stratified_sampling.py --seed 42
-python bert/01_stratified_sampling.py --k_min 0
-python bert/01_stratified_sampling.py --input "data/processed/text_dedup/*.parquet"
-python bert/01_stratified_sampling.py --output bert/data/sample.csv
-python bert/01_stratified_sampling.py --report_path bert/data/sampling_report.json
-```
-
-说明：
-
-- 自动识别文本列时只会匹配内置候选列名；如果没有匹配到，会直接报错并要求显式传入 `--text_col`
-- `--k_min 0` 表示关闭“满足阈值的分层至少抽 1 条”的保底逻辑
-- 当 `--n` 很小而符合保底条件的分层太多时，可能无法满足“总样本数精确等于 n”，这时可以提高 `--k_min` 或增大 `--n`
-
-### 8.2 bert/02_llm_label_local.py
-
-命令：
-
-```bash
-python bert/02_llm_label_local.py
-```
-
-默认行为：
-
-- 默认从 `bert/data/sample.csv` 读取
-- 主标注模型默认走 Qwen 兼容 OpenAI API
-- JSON 修复器默认仍走本地 Ollama
-- 默认会读取 `bert/llm_label_local.toml` 配置文件（如存在）
-- 仓库内默认只保留示例文件 `bert/llm_label_local.example.toml`
-- 默认输出 `bert/data/labeled.csv`
-- 同时输出 `bert/data/labeling_report.json`
-
-常用参数：
-
-```bash
-python bert/02_llm_label_local.py
-python bert/02_llm_label_local.py --input bert/data/sample.csv --output bert/data/labeled.csv
-python bert/02_llm_label_local.py --report_path bert/data/labeling_report.json
-export DASHSCOPE_API_KEY=your_key_here
-python bert/02_llm_label_local.py --labeler_model qwen-coder-plus-latest
-python bert/02_llm_label_local.py --labeler_api_key your_key_here
-python bert/02_llm_label_local.py --labeler_base_url https://dashscope.aliyuncs.com/compatible-mode/v1
-python bert/02_llm_label_local.py --fixer_model qwen3:8b
-python bert/02_llm_label_local.py --base_url http://localhost:11434
-cp bert/llm_label_local.example.toml bert/llm_label_local.toml
-python bert/02_llm_label_local.py --config bert/llm_label_local.toml
-python bert/02_llm_label_local.py --fixer_provider qwen_openai --fixer_model qwen-plus-latest --fixer_api_key your_key_here
-```
-
-配置文件示例：
-
-```toml
-input = "bert/data/sample.csv"
-output = "bert/data/labeled.csv"
-report_path = "bert/data/labeling_report.json"
-
-[labeler]
-provider = "qwen_openai"
-base_url = "https://dashscope.aliyuncs.com/compatible-mode/v1"
-model = "qwen-coder-plus-latest"
-
-[fixer]
-provider = "ollama"
-base_url = "http://localhost:11434"
-model = "qwen3:8b"
-```
-
-输出列：
-
-- `tangping_related_label`：`相关` 或 `无关`
-- `tangping_related`：二值标签，`1` 表示相关，`0` 表示无关
-- `exclusion_type`：无关时的排除类别
-- `confidence`：高 / 中 / 低
-- `llm_reason`：简短理由
-
-进度显示：
-
-- 脚本会输出 `stage=load_input`、`stage=detect_text_col`、`stage=labeling_start`、`stage=write_output`、`stage=write_report`
-- 安装了 `tqdm` 时会显示逐条标注进度条
-
-## 9. 迁移后的注意事项
-
-这次迁移后，以下旧结构已经删除或停止使用：
+以下旧结构已经删除或停止使用：
 
 - 旧的 `step_01` 到 `step_07`
 - 旧的 `count_*` 脚本
 - 旧的 `bert_classify/` 训练预测结构
 - 旧的 `project_io.py`
 
-以下旧目录如果还存在，只是历史产物保留，不再参与主流程：
+以下旧目录如果还存在，只是历史产物保留，不再参与当前主流程：
 
 - 根目录 `preprocessed/`
 - 根目录 `outputs/`
 - `archive/reports_legacy/`
 - 根目录 `logs/`
 
-当前唯一应依赖的主流程目录是：
-
-- `raw/`
-- `data/processed/`
-- `data/state/`
-- `data/reports/`
-- `data/exports/`
-
-## 10. 推荐使用顺序
-
-### 10.1 数据流水线
-
-```bash
-python main.py run
-python main.py status
-python main.py export-csv text
-```
-
-运行 `main.py` 时会显示 `discovered raw_files`、`target raw_files`、`processed files`、`flushing parquet buffers` 等阶段进度。
-
-### 10.2 抽样与标注
-
-```bash
-python bert/01_stratified_sampling.py
-python bert/02_llm_label_local.py --input bert/data/sample.csv --output bert/data/labeled.csv
-```
-
-### 10.3 全量重建
-
-```bash
-python main.py full
-python main.py status
-```
-
 ## 11. 常见问题
 
-### 11.1 为什么主流程不再从 `data/` 里的旧 CSV 开始？
-
-因为当前主流程默认只从 `raw/` 读取原始数据，其他历史目录中的旧 CSV 已不再作为正式输入入口。
-
-### 11.2 为什么内部结果全部写到 `data/processed/`？
-
-这是当前项目使用的标准结构，便于维护增量状态、处理结果和统一导出。
-
-### 11.3 为什么根目录还有 `outputs/`、`preprocessed/`？
-
-那是早期实验阶段保留下来的历史产物。当前主流程不再使用它们，也不需要再向这些目录写入。
-
-### 11.4 什么情况下用 `run`，什么情况下用 `full`？
+### 11.1 什么情况下用 `run`，什么情况下用 `full`？
 
 - 平时追加新数据：`run`
 - 修改清洗逻辑或怀疑状态不一致：`full`
+
+### 11.2 为什么内部结果都写到 `data/processed/`？
+
+这是当前项目使用的标准结构，便于维护增量状态、处理结果和统一导出。
+
+### 11.3 为什么主流程不再从 `data/` 里的旧 CSV 开始？
+
+因为当前主流程默认只从 `raw/` 读取原始数据，其他历史目录中的旧 CSV 已不再作为正式输入入口。
+
+### 11.4 为什么根目录还有 `outputs/`、`preprocessed/`？
+
+那是早期实验阶段保留下来的历史产物。当前主流程不再使用它们，也不需要再向这些目录写入。
 
 ### 11.5 是否要求 parquet 依赖？
 

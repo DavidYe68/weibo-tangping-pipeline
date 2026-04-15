@@ -32,23 +32,33 @@ def emit_progress(message: str) -> None:
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
-        description="Stratified sampling from parquet files with exact sample size."
+        description=(
+            "从 data/processed/text_dedup/*.parquet 做分层抽样，生成待人工审核的 sample.csv。"
+        )
     )
-    parser.add_argument("--input", default="data/processed/text_dedup/*.parquet", help="Input parquet glob pattern")
-    parser.add_argument("--output", default="bert/data/sample.csv", help="Output CSV path")
-    parser.add_argument("--n", type=int, default=6000, help="Target sample size")
-    parser.add_argument("--seed", type=int, default=42, help="Random seed")
+    parser.add_argument(
+        "--input",
+        default="data/processed/text_dedup/*.parquet",
+        help="输入 parquet 的 glob 模式；默认 data/processed/text_dedup/*.parquet。",
+    )
+    parser.add_argument(
+        "--output",
+        default="bert/data/sample.csv",
+        help="输出抽样 CSV 路径；默认 bert/data/sample.csv。",
+    )
+    parser.add_argument("--n", type=int, default=6000, help="目标样本数；默认 6000。")
+    parser.add_argument("--seed", type=int, default=42, help="随机种子；默认 42。")
     parser.add_argument(
         "--k_min",
         type=int,
         default=20,
-        help="Minimum stratum population to guarantee at least one sample; 0 disables the guarantee",
+        help="满足保底抽样的最小分层样本量；设为 0 则关闭保底逻辑。",
     )
-    parser.add_argument("--text_col", default=None, help="Optional forced text column name")
+    parser.add_argument("--text_col", default=None, help="可选，显式指定文本列名。")
     parser.add_argument(
         "--report_path",
         default="bert/data/sampling_report.json",
-        help="Sampling report JSON path",
+        help="抽样报告 JSON 路径；默认 bert/data/sampling_report.json。",
     )
     return parser.parse_args()
 
