@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import argparse
+import time
 from pathlib import Path
 
 import pandas as pd
@@ -14,6 +15,10 @@ from lib.analysis_utils import (
     sort_period_labels,
 )
 from lib.io_utils import save_json
+
+
+def format_elapsed(start_time: float) -> str:
+    return f"{time.perf_counter() - start_time:.2f}s"
 
 
 def parse_args() -> argparse.Namespace:
@@ -39,6 +44,16 @@ def parse_args() -> argparse.Namespace:
         "--overall_topic_share_path",
         default="bert/artifacts/broad_analysis/topic_model/topic_share_by_period.csv",
         help="Path to overall topic-share output.",
+    )
+    parser.add_argument(
+        "--topic_share_by_period_and_ip_path",
+        default="bert/artifacts/broad_analysis/topic_model/topic_share_by_period_and_ip.csv",
+        help="Path to IP-by-period topic share output.",
+    )
+    parser.add_argument(
+        "--topic_share_by_period_and_ip_and_keyword_path",
+        default="bert/artifacts/broad_analysis/topic_model/topic_share_by_period_and_ip_and_keyword.csv",
+        help="Path to keyword + IP + period topic share output.",
     )
     parser.add_argument(
         "--output_dir",
@@ -143,26 +158,39 @@ def compare_ranked_terms(
 def compare_topic_shares(
     df: pd.DataFrame,
     *,
-    keyword_col: str | None,
+    group_cols: list[str] | None,
     period_col: str,
     topic_col: str,
     share_col: str,
-    selected_keywords: list[str],
     time_granularity: str,
+    filters: dict[str, list[str]] | None = None,
 ) -> tuple[pd.DataFrame, pd.DataFrame]:
     drift_rows: list[dict[str, object]] = []
     change_rows: list[dict[str, object]] = []
     if df.empty:
         return pd.DataFrame(drift_rows), pd.DataFrame(change_rows)
 
-    if keyword_col:
-        grouped_items = [(keyword, df[df[keyword_col] == keyword].copy()) for keyword in selected_keywords]
+    working = df.copy()
+    for column, allowed_values in (filters or {}).items():
+        if column in working.columns:
+            working = working[working[column].isin(allowed_values)].copy()
+
+    if group_cols:
+        grouped_items = list(working.groupby(group_cols, dropna=False))
     else:
-        grouped_items = [("ALL", df.copy())]
+        grouped_items = [(tuple(), working)]
 
     for group_key, group_df in grouped_items:
         if group_df.empty:
             continue
+        if not isinstance(group_key, tuple):
+            group_key = (group_key,)
+
+        group_payload = {}
+        if group_cols:
+            for group_col, group_value in zip(group_cols, group_key):
+                group_payload[group_col] = str(group_value)
+
         ordered_periods = sort_period_labels(group_df[period_col].astype(str).unique().tolist(), time_granularity)
         for previous_period, current_period in adjacent_pairs(ordered_periods):
             previous = group_df[group_df[period_col] == previous_period].copy()
@@ -178,7 +206,7 @@ def compare_topic_shares(
 
             drift_rows.append(
                 {
-                    "keyword": group_key,
+                    **group_payload,
                     "previous_period": previous_period,
                     "current_period": current_period,
                     "topic_js_divergence": float(js_divergence(previous_vector, current_vector)),
@@ -189,7 +217,7 @@ def compare_topic_shares(
             for topic in topics:
                 change_rows.append(
                     {
-                        "keyword": group_key,
+                        **group_payload,
                         "previous_period": previous_period,
                         "current_period": current_period,
                         "topic_id": topic,
@@ -201,9 +229,11 @@ def compare_topic_shares(
 
     change_df = pd.DataFrame(change_rows)
     if not change_df.empty:
+        sort_columns = list(group_cols or []) + ["previous_period", "share_delta"]
+        ascending = [True] * len(group_cols or []) + [True, False]
         change_df = change_df.sort_values(
-            ["keyword", "previous_period", "share_delta"],
-            ascending=[True, True, False],
+            sort_columns,
+            ascending=ascending,
         ).reset_index(drop=True)
     return pd.DataFrame(drift_rows), change_df
 
@@ -211,12 +241,28 @@ def compare_topic_shares(
 def main() -> None:
     args = parse_args()
     selected_keywords = normalize_cli_keywords(args.keywords)
+    total_start = time.perf_counter()
+
+    print("[drift] Loading semantic/topic analysis outputs", flush=True)
+    load_start = time.perf_counter()
 
     cooccurrence_df = load_csv_if_exists(args.cooccurrence_path)
     neighbor_df = load_csv_if_exists(args.neighbor_path)
     topic_share_df = load_csv_if_exists(args.topic_share_path)
     overall_topic_share_df = load_csv_if_exists(args.overall_topic_share_path)
+    topic_share_by_ip_df = load_csv_if_exists(args.topic_share_by_period_and_ip_path)
+    topic_share_by_ip_keyword_df = load_csv_if_exists(args.topic_share_by_period_and_ip_and_keyword_path)
+    print(
+        "[drift] Loaded inputs in "
+        f"{format_elapsed(load_start)} "
+        f"(cooccurrence={len(cooccurrence_df)}, neighbors={len(neighbor_df)}, "
+        f"topic_share={len(topic_share_df)}, overall_topic_share={len(overall_topic_share_df)}, "
+        f"topic_share_by_ip={len(topic_share_by_ip_df)}, topic_share_by_ip_keyword={len(topic_share_by_ip_keyword_df)})",
+        flush=True,
+    )
 
+    compare_start = time.perf_counter()
+    print("[drift] Computing collocation and neighbor drift", flush=True)
     collocation_drift_df = compare_ranked_terms(
         cooccurrence_df,
         keyword_col="keyword",
@@ -237,24 +283,58 @@ def main() -> None:
         top_n=args.top_n,
         time_granularity=args.time_granularity,
     )
+    print("[drift] Computing topic drift", flush=True)
 
     topic_drift_df, topic_change_df = compare_topic_shares(
         topic_share_df,
-        keyword_col="keyword_normalized" if "keyword_normalized" in topic_share_df.columns else "keyword",
+        group_cols=["keyword_normalized" if "keyword_normalized" in topic_share_df.columns else "keyword"],
         period_col="period_label",
         topic_col="topic_id",
         share_col="doc_share",
-        selected_keywords=selected_keywords,
         time_granularity=args.time_granularity,
+        filters={
+            ("keyword_normalized" if "keyword_normalized" in topic_share_df.columns else "keyword"): selected_keywords
+        },
     )
     overall_topic_drift_df, overall_topic_change_df = compare_topic_shares(
         overall_topic_share_df,
-        keyword_col=None,
+        group_cols=None,
         period_col="period_label",
         topic_col="topic_id",
         share_col="doc_share",
-        selected_keywords=selected_keywords,
         time_granularity=args.time_granularity,
+    )
+    topic_drift_by_ip_df, topic_change_by_ip_df = compare_topic_shares(
+        topic_share_by_ip_df,
+        group_cols=["ip_normalized" if "ip_normalized" in topic_share_by_ip_df.columns else "ip"],
+        period_col="period_label",
+        topic_col="topic_id",
+        share_col="doc_share",
+        time_granularity=args.time_granularity,
+    )
+    ip_keyword_group_cols = [
+        "keyword_normalized" if "keyword_normalized" in topic_share_by_ip_keyword_df.columns else "keyword",
+        "ip_normalized" if "ip_normalized" in topic_share_by_ip_keyword_df.columns else "ip",
+    ]
+    topic_drift_by_ip_keyword_df, topic_change_by_ip_keyword_df = compare_topic_shares(
+        topic_share_by_ip_keyword_df,
+        group_cols=ip_keyword_group_cols,
+        period_col="period_label",
+        topic_col="topic_id",
+        share_col="doc_share",
+        time_granularity=args.time_granularity,
+        filters={ip_keyword_group_cols[0]: selected_keywords},
+    )
+    print(
+        "[drift] Drift comparisons finished in "
+        f"{format_elapsed(compare_start)} "
+        f"(collocation={len(collocation_drift_df)}, neighbors={len(neighbor_drift_df)}, "
+        f"topic_by_keyword={len(topic_drift_df)}, topic_changes={len(topic_change_df)}, "
+        f"overall_topic={len(overall_topic_drift_df)}, overall_changes={len(overall_topic_change_df)}, "
+        f"topic_by_ip={len(topic_drift_by_ip_df)}, topic_changes_by_ip={len(topic_change_by_ip_df)}, "
+        f"topic_by_ip_keyword={len(topic_drift_by_ip_keyword_df)}, "
+        f"topic_changes_by_ip_keyword={len(topic_change_by_ip_keyword_df)})",
+        flush=True,
     )
 
     output_dir = Path(args.output_dir)
@@ -265,14 +345,24 @@ def main() -> None:
     topic_change_path = output_dir / "topic_share_change_by_keyword.csv"
     overall_topic_path = output_dir / "topic_drift_overall.csv"
     overall_topic_change_path = output_dir / "topic_share_change_overall.csv"
+    topic_by_ip_path = output_dir / "topic_drift_by_ip.csv"
+    topic_change_by_ip_path = output_dir / "topic_share_change_by_ip.csv"
+    topic_by_ip_keyword_path = output_dir / "topic_drift_by_ip_and_keyword.csv"
+    topic_change_by_ip_keyword_path = output_dir / "topic_share_change_by_ip_and_keyword.csv"
     summary_path = output_dir / "drift_analysis_summary.json"
 
+    save_start = time.perf_counter()
+    print(f"[drift] Saving outputs under {output_dir}", flush=True)
     save_dataframe(collocation_drift_df, collocation_path)
     save_dataframe(neighbor_drift_df, neighbor_path)
     save_dataframe(topic_drift_df, topic_path)
     save_dataframe(topic_change_df, topic_change_path)
     save_dataframe(overall_topic_drift_df, overall_topic_path)
     save_dataframe(overall_topic_change_df, overall_topic_change_path)
+    save_dataframe(topic_drift_by_ip_df, topic_by_ip_path)
+    save_dataframe(topic_change_by_ip_df, topic_change_by_ip_path)
+    save_dataframe(topic_drift_by_ip_keyword_df, topic_by_ip_keyword_path)
+    save_dataframe(topic_change_by_ip_keyword_df, topic_change_by_ip_keyword_path)
 
     summary = {
         "selected_keywords": selected_keywords,
@@ -283,8 +373,24 @@ def main() -> None:
         "topic_share_change_path": str(topic_change_path.resolve()),
         "overall_topic_drift_path": str(overall_topic_path.resolve()),
         "overall_topic_change_path": str(overall_topic_change_path.resolve()),
+        "topic_drift_by_ip_path": str(topic_by_ip_path.resolve()),
+        "topic_share_change_by_ip_path": str(topic_change_by_ip_path.resolve()),
+        "topic_drift_by_ip_and_keyword_path": str(topic_by_ip_keyword_path.resolve()),
+        "topic_share_change_by_ip_and_keyword_path": str(topic_change_by_ip_keyword_path.resolve()),
+        "collocation_drift_row_count": int(len(collocation_drift_df)),
+        "neighbor_drift_row_count": int(len(neighbor_drift_df)),
+        "topic_drift_row_count": int(len(topic_drift_df)),
+        "topic_share_change_row_count": int(len(topic_change_df)),
+        "overall_topic_drift_row_count": int(len(overall_topic_drift_df)),
+        "overall_topic_change_row_count": int(len(overall_topic_change_df)),
+        "topic_drift_by_ip_row_count": int(len(topic_drift_by_ip_df)),
+        "topic_share_change_by_ip_row_count": int(len(topic_change_by_ip_df)),
+        "topic_drift_by_ip_and_keyword_row_count": int(len(topic_drift_by_ip_keyword_df)),
+        "topic_share_change_by_ip_and_keyword_row_count": int(len(topic_change_by_ip_keyword_df)),
     }
     save_json(summary_path, summary)
+    print(f"[drift] Saved outputs in {format_elapsed(save_start)}", flush=True)
+    print(f"[drift] Total runtime: {format_elapsed(total_start)}", flush=True)
 
 
 if __name__ == "__main__":

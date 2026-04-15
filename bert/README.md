@@ -246,6 +246,7 @@ python3 bert/06_predict_bert_classifier.py \
 
 - 读取 `06` 的预测结果
 - 规范化文本列、时间列、关键词列
+- 自动识别并规范化 IP 属地列；缺失 IP 会统一记为 `UNKNOWN_IP`
 - 默认只保留 `pred_label == 1` 的正样本
 - 生成后续 `08` / `09` 共用的分析底表
 
@@ -267,19 +268,28 @@ python3 bert/07_build_broad_analysis_base.py \
 
 - `--include_negative`：连负样本也保留
 - `--min_confidence 0.8`：只保留置信度足够高的样本
-- `--text_col` / `--time_col` / `--keyword_col`：强制指定列名
+- `--text_col` / `--time_col` / `--keyword_col` / `--ip_col`：强制指定列名
 
 重点输出：
 
 - `bert/artifacts/broad_analysis/analysis_base.parquet`
 - `bert/artifacts/broad_analysis/analysis_base_report.json`
 
+其中 `analysis_base_report.json` 会额外给出：
+
+- `rows_by_ip`
+- `rows_by_period_and_ip`
+- `missing_ip_rows_after_filter`
+- `missing_ip_rate_after_filter`
+
 ### 7. `08_topic_model_bertopic.py`
 
 作用：
 
 - 在 `07` 生成的分析底表上做 BERTopic
-- 输出文档级 topic 结果、topic 词表、按时间的 topic 占比
+- 输出文档级 topic 结果、topic 词表，以及 `topic / 时间 / IP` 三个维度的占比表
+- 缺失 IP 不会被丢掉，而是作为 `UNKNOWN_IP` 单独保留
+- 支持 embedding 断点续跑，避免中途打断后从头编码
 
 默认命令：
 
@@ -294,8 +304,17 @@ python3 bert/08_topic_model_bertopic.py \
   --time_granularity quarter \
   --min_topic_size 50 \
   --top_n_words 15 \
+  --device cuda \
+  --resume \
   --save_model
 ```
+
+常用可选参数：
+
+- `--device auto|cpu|cuda|mps`：控制 sentence-transformers 的编码设备
+- `--resume`：如果已有 embedding checkpoint，则直接续跑
+- `--checkpoint_dir`：自定义 checkpoint 目录
+- `--ip_col`：手动指定 IP 列名
 
 重点输出：
 
@@ -304,7 +323,16 @@ python3 bert/08_topic_model_bertopic.py \
 - `bert/artifacts/broad_analysis/topic_model/topic_terms.csv`
 - `bert/artifacts/broad_analysis/topic_model/topic_share_by_period.csv`
 - `bert/artifacts/broad_analysis/topic_model/topic_share_by_period_and_keyword.csv`
+- `bert/artifacts/broad_analysis/topic_model/topic_share_by_ip.csv`
+- `bert/artifacts/broad_analysis/topic_model/topic_share_by_period_and_ip.csv`
+- `bert/artifacts/broad_analysis/topic_model/topic_share_by_period_and_ip_and_keyword.csv`
 - `bert/artifacts/broad_analysis/topic_model/topic_model_summary.json`
+
+其中最适合直接做比较的是这三张表：
+
+- `topic_share_by_period.csv`：只看时间维度
+- `topic_share_by_period_and_ip.csv`：比较不同 IP 在各时间段的 topic 分布
+- `topic_share_by_period_and_ip_and_keyword.csv`：在 `关键词 + 时间 + IP` 的细粒度下比较 topic 分布
 
 ### 8. `09_keyword_semantic_analysis.py`
 
@@ -312,6 +340,7 @@ python3 bert/08_topic_model_bertopic.py \
 
 - 对每个关键词在不同时间段做共现词分析
 - 用 embedding 对候选词再排序，得到 semantic neighbors
+- 脚本会输出分阶段进度，便于判断是在分词、统计还是 embedding 阶段
 
 默认命令：
 
@@ -326,6 +355,7 @@ python3 bert/09_keyword_semantic_analysis.py \
   --time_granularity quarter \
   --min_doc_freq 10 \
   --top_k_terms 80 \
+  --device cuda \
   --top_k_neighbors 30
 ```
 
@@ -343,6 +373,7 @@ python3 bert/09_keyword_semantic_analysis.py \
 - 比较相邻时间段的共现词变化
 - 比较相邻时间段的 semantic neighbors 变化
 - 比较相邻时间段的 topic share 变化
+- 除了按关键词和总体比较，也会额外输出按 IP、按 `IP + 关键词` 的 topic 漂移结果
 
 默认命令：
 
@@ -366,6 +397,10 @@ python3 bert/10_concept_drift_analysis.py \
 - `bert/artifacts/broad_analysis/drift_analysis/topic_share_change_by_keyword.csv`
 - `bert/artifacts/broad_analysis/drift_analysis/topic_drift_overall.csv`
 - `bert/artifacts/broad_analysis/drift_analysis/topic_share_change_overall.csv`
+- `bert/artifacts/broad_analysis/drift_analysis/topic_drift_by_ip.csv`
+- `bert/artifacts/broad_analysis/drift_analysis/topic_share_change_by_ip.csv`
+- `bert/artifacts/broad_analysis/drift_analysis/topic_drift_by_ip_and_keyword.csv`
+- `bert/artifacts/broad_analysis/drift_analysis/topic_share_change_by_ip_and_keyword.csv`
 - `bert/artifacts/broad_analysis/drift_analysis/drift_analysis_summary.json`
 
 ## Windows 机器上的注意事项

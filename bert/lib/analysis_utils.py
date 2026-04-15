@@ -17,9 +17,12 @@ from lib.io_utils import ensure_parent
 DEFAULT_ANALYSIS_KEYWORDS = ["躺平", "摆烂", "佛系"]
 TIME_CANDIDATES = ["publish_time", "发布时间", "created_at", "publish_time", "timestamp"]
 KEYWORD_CANDIDATES = ["keyword_normalized", "keyword", "hit_keyword", "query_keyword"]
+IP_CANDIDATES = ["ip_normalized", "ip", "IP", "ip_location", "IP属地"]
+MISSING_IP_LABEL = "UNKNOWN_IP"
 
 _WHITESPACE_RE = re.compile(r"\s+")
 _EDGE_MARK_RE = re.compile(r"^[#＃﹟%]+|[#＃﹟%]+$")
+_IP_PREFIX_RE = re.compile(r"^(?:ip|IP)\s*(?:属地|定位)?\s*[:：]?\s*")
 _PERIOD_FREQ_MAP = {
     "month": "M",
     "quarter": "Q",
@@ -123,6 +126,23 @@ def canonicalize_keyword(value: object, allowed_keywords: Sequence[str]) -> str 
     return normalized
 
 
+def normalize_ip_text(value: object) -> str | None:
+    if value is None or pd.isna(value):
+        return None
+
+    text = str(value).strip()
+    if not text:
+        return None
+
+    lowered = text.lower()
+    if lowered in {"nan", "none", "null", "na", "n/a", "unknown", "未知", "未显示", "-", "--"}:
+        return None
+
+    text = _IP_PREFIX_RE.sub("", text)
+    text = text.strip(" ：:;；,，[]【】()（）<>《》\"'“”‘’")
+    return text or None
+
+
 def build_keyword_mask(series: pd.Series, allowed_keywords: Sequence[str]) -> pd.Series:
     allowed = set(normalize_cli_keywords(allowed_keywords))
     normalized = series.map(lambda value: canonicalize_keyword(value, DEFAULT_ANALYSIS_KEYWORDS))
@@ -154,6 +174,38 @@ def detect_keyword_column(df: pd.DataFrame, forced: Optional[str]) -> str:
 
 def detect_time_column(df: pd.DataFrame, forced: Optional[str]) -> str:
     return detect_existing_column(df, forced, candidates=TIME_CANDIDATES, label="time")
+
+
+def detect_ip_column(
+    df: pd.DataFrame,
+    forced: Optional[str],
+    *,
+    required: bool = False,
+) -> str | None:
+    if forced:
+        if forced not in df.columns:
+            raise ValueError(f"IP column '{forced}' not found.")
+        return forced
+
+    for column in IP_CANDIDATES:
+        if column in df.columns:
+            return column
+
+    if required:
+        raise ValueError("Could not detect IP column automatically.")
+    return None
+
+
+def attach_ip_columns(df: pd.DataFrame, *, ip_col: Optional[str]) -> pd.DataFrame:
+    result = df.copy()
+    if ip_col and ip_col in result.columns:
+        result["ip_raw"] = result[ip_col].astype("string")
+    else:
+        result["ip_raw"] = pd.Series(pd.NA, index=result.index, dtype="string")
+
+    result["ip_normalized"] = result["ip_raw"].map(normalize_ip_text).fillna(MISSING_IP_LABEL)
+    result["ip_missing"] = result["ip_normalized"] == MISSING_IP_LABEL
+    return result
 
 
 def attach_time_columns(
@@ -262,6 +314,7 @@ def prepare_analysis_frame(
     text_col: Optional[str],
     time_col: Optional[str],
     keyword_col: Optional[str],
+    ip_col: Optional[str],
     keywords: Sequence[str],
     positive_label_col: str,
     positive_only: bool,
@@ -272,8 +325,10 @@ def prepare_analysis_frame(
     resolved_text_col = detect_text_column(working, text_col, source_name="analysis input")
     resolved_keyword_col = detect_keyword_column(working, keyword_col)
     resolved_time_col = detect_time_column(working, time_col)
+    resolved_ip_col = detect_ip_column(working, ip_col, required=False)
 
     working = attach_time_columns(working, time_col=resolved_time_col)
+    working = attach_ip_columns(working, ip_col=resolved_ip_col)
     working["analysis_text"] = working[resolved_text_col].fillna("").astype("string").str.strip()
     working["keyword_raw"] = working[resolved_keyword_col].astype("string")
     working["keyword_normalized"] = working["keyword_raw"].map(
@@ -311,11 +366,19 @@ def prepare_analysis_frame(
         "resolved_text_col": resolved_text_col,
         "resolved_keyword_col": resolved_keyword_col,
         "resolved_time_col": resolved_time_col,
+        "resolved_ip_col": resolved_ip_col,
         "selected_keywords": normalize_cli_keywords(keywords),
         "positive_label_col": positive_label_col,
         "positive_only": bool(positive_only),
         "min_confidence": min_confidence,
         "rows_before_filter": int(len(working)),
         "rows_after_filter": int(len(filtered)),
+        "missing_ip_rows_after_filter": int(filtered["ip_missing"].sum()) if "ip_missing" in filtered.columns else 0,
+        "missing_ip_rate_after_filter": (
+            float(filtered["ip_missing"].mean()) if len(filtered) > 0 and "ip_missing" in filtered.columns else 0.0
+        ),
+        "unique_ip_count_excluding_missing": (
+            int(filtered.loc[~filtered["ip_missing"], "ip_normalized"].nunique()) if "ip_missing" in filtered.columns else 0
+        ),
     }
     return filtered.reset_index(drop=True), metadata

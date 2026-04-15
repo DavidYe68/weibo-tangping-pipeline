@@ -4,6 +4,7 @@ from __future__ import annotations
 import argparse
 import math
 import re
+import time
 from collections import Counter
 from pathlib import Path
 
@@ -59,6 +60,38 @@ DEFAULT_STOPWORDS = {
 }
 
 TOKEN_RE = re.compile(r"[\u4e00-\u9fffA-Za-z0-9_]+")
+
+
+def format_elapsed(start_time: float) -> str:
+    return f"{time.perf_counter() - start_time:.2f}s"
+
+
+def resolve_embedding_device(requested_device: str) -> str:
+    if requested_device != "auto":
+        return requested_device
+
+    try:
+        import torch
+    except ImportError:
+        return "cpu"
+
+    if torch.cuda.is_available():
+        return "cuda"
+
+    mps_backend = getattr(torch.backends, "mps", None)
+    if mps_backend is not None and mps_backend.is_available():
+        return "mps"
+
+    return "cpu"
+
+
+def missing_dependency_message(package_name: str) -> str:
+    return (
+        f"{package_name} is not installed in the current environment. "
+        "Install the project dependencies first, for example with "
+        "`.venv/bin/pip install -r requirements.txt` on macOS/Linux or "
+        "`.\\.venv\\Scripts\\pip.exe install -r requirements.txt` on Windows."
+    )
 
 
 def parse_args() -> argparse.Namespace:
@@ -135,6 +168,12 @@ def parse_args() -> argparse.Namespace:
         action="store_true",
         help="Only load embedding artifacts from local files.",
     )
+    parser.add_argument(
+        "--device",
+        default="auto",
+        choices=["auto", "cpu", "cuda", "mps"],
+        help="Device for the sentence-transformers embedding model.",
+    )
     return parser.parse_args()
 
 
@@ -155,22 +194,29 @@ def load_tokenizer():
     try:
         import jieba
     except ImportError as exc:
-        raise ImportError("jieba is not installed. Please install requirements and retry.") from exc
+        raise ImportError(missing_dependency_message("jieba")) from exc
     return jieba
 
 
-def load_sentence_encoder(args: argparse.Namespace):
+def load_sentence_encoder(args: argparse.Namespace, *, emit):
     try:
         from sentence_transformers import SentenceTransformer
     except ImportError as exc:
-        raise ImportError(
-            "sentence-transformers is not installed. Please install requirements and retry."
-        ) from exc
+        raise ImportError(missing_dependency_message("sentence-transformers")) from exc
 
-    return SentenceTransformer(
+    resolved_device = resolve_embedding_device(args.device)
+    emit(
+        "Loading sentence-transformers model "
+        f"{args.embedding_model} on device={resolved_device}"
+    )
+    encoder = SentenceTransformer(
         args.embedding_model,
+        device=resolved_device,
         local_files_only=bool(args.local_files_only),
     )
+    actual_device = str(getattr(encoder, "device", resolved_device))
+    emit(f"Embedding model reports device={actual_device}")
+    return encoder, actual_device
 
 
 def tokenize_text(text: str, *, jieba_module, stopwords: set[str], token_min_length: int) -> list[str]:
@@ -309,8 +355,12 @@ def main() -> None:
     args = parse_args()
     emit = resolve_emit("semantic", None)
     selected_keywords = normalize_cli_keywords(args.keywords)
+    total_start = time.perf_counter()
 
+    emit(f"Loading analysis base from {args.input_path}")
+    load_start = time.perf_counter()
     df, _ = load_tabular_files(args.input_path, emit=emit)
+    emit(f"Loaded {len(df)} rows in {format_elapsed(load_start)}")
     for column in (args.text_col, args.keyword_col, args.time_col):
         if column not in df.columns:
             raise ValueError(f"Required column '{column}' not found in analysis base.")
@@ -322,7 +372,13 @@ def main() -> None:
         raise ValueError("No rows left after keyword filtering.")
 
     working["period_label"] = coerce_period_series(working[args.time_col], args.time_granularity)
+    emit(
+        "Prepared filtered dataset "
+        f"with {len(working)} documents, {working['period_label'].nunique(dropna=False)} periods, "
+        f"keywords={selected_keywords}"
+    )
 
+    tokenize_start = time.perf_counter()
     stopwords = load_stopwords(args.stopwords_path)
     jieba_module = load_tokenizer()
 
@@ -336,7 +392,10 @@ def main() -> None:
         )
     )
     working["token_set"] = working["tokens"].map(lambda tokens: set(tokens))
+    emit(f"Tokenization finished in {format_elapsed(tokenize_start)}")
 
+    cooccurrence_start = time.perf_counter()
+    emit("Scoring keyword co-occurrence terms")
     cooccurrence_rows: list[dict[str, object]] = []
     period_labels = sort_period_labels(working["period_label"].astype(str).unique().tolist(), args.time_granularity)
     for period_label in ["ALL"] + period_labels:
@@ -362,14 +421,23 @@ def main() -> None:
             ["keyword", "period_label", "term_rank"],
             ascending=[True, True, True],
         ).reset_index(drop=True)
+    emit(
+        "Co-occurrence scoring finished in "
+        f"{format_elapsed(cooccurrence_start)} with {len(cooccurrence_df)} rows"
+    )
 
+    neighbor_start = time.perf_counter()
     emit("Computing embedding neighbors")
-    encoder = load_sentence_encoder(args)
+    encoder, embedding_device = load_sentence_encoder(args, emit=emit)
     semantic_neighbors_df = build_semantic_neighbors(
         cooccurrence_df,
         encoder=encoder,
         top_k_neighbors=args.top_k_neighbors,
         candidate_pool_size=args.candidate_pool_size,
+    )
+    emit(
+        "Embedding-neighbor scoring finished in "
+        f"{format_elapsed(neighbor_start)} with {len(semantic_neighbors_df)} rows"
     )
 
     output_dir = Path(args.output_dir)
@@ -379,6 +447,8 @@ def main() -> None:
     tokenized_path = output_dir / "tokenized_analysis_base.parquet"
     summary_path = output_dir / "semantic_analysis_summary.json"
 
+    save_start = time.perf_counter()
+    emit(f"Saving outputs under {output_dir}")
     save_dataframe(cooccurrence_df, cooccurrence_path)
     save_dataframe(semantic_neighbors_df, neighbors_path)
     save_dataframe(working.drop(columns=["token_set"]), tokenized_path)
@@ -388,13 +458,19 @@ def main() -> None:
         "output_dir": str(output_dir.resolve()),
         "selected_keywords": selected_keywords,
         "time_granularity": args.time_granularity,
+        "embedding_model": args.embedding_model,
+        "embedding_device": embedding_device,
         "cooccurrence_path": str(cooccurrence_path.resolve()),
         "semantic_neighbors_path": str(neighbors_path.resolve()),
         "tokenized_analysis_base_path": str(tokenized_path.resolve()),
         "doc_count": int(len(working)),
+        "cooccurrence_row_count": int(len(cooccurrence_df)),
+        "semantic_neighbor_row_count": int(len(semantic_neighbors_df)),
     }
     save_json(summary_path, summary)
+    emit(f"Saved outputs in {format_elapsed(save_start)}")
     emit(f"Saved semantic-analysis outputs to {output_dir}")
+    emit(f"Total runtime: {format_elapsed(total_start)}")
 
 
 if __name__ == "__main__":

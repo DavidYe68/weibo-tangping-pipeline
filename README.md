@@ -260,7 +260,7 @@ python bert/06_predict_bert_classifier.py \
 
 ### 07. 构建分析底表
 
-将 `06` 的预测结果整理为统一分析表，默认只保留预测为正样本的语料。
+将 `06` 的预测结果整理为统一分析表，默认只保留预测为正样本的语料。脚本会同时规范化时间、关键词和 IP 属地；缺失 IP 不会被丢弃，而是统一记为 `UNKNOWN_IP`。
 
 ```bash
 python bert/07_build_broad_analysis_base.py
@@ -273,12 +273,26 @@ python bert/07_build_broad_analysis_base.py
 - `bert/artifacts/broad_analysis/analysis_base.parquet`
 - `bert/artifacts/broad_analysis/analysis_base_report.json`
 
+其中 `analysis_base_report.json` 会额外汇总：
+
+- `rows_by_ip`
+- `rows_by_period_and_ip`
+- 缺失 IP 的数量和占比
+
 ### 08. 主题模型分析
 
-在 `07` 的底表上运行 BERTopic，生成文档级主题分配、主题词表和按时间的主题占比。
+在 `07` 的底表上运行 BERTopic，生成文档级主题分配、主题词表，以及围绕 `topic / 时间 / IP` 的多组占比表。脚本支持 embedding checkpoint，意外中断后可以用 `--resume` 续跑。
 
 ```bash
 python bert/08_topic_model_bertopic.py
+```
+
+常用变体：
+
+```bash
+python bert/08_topic_model_bertopic.py \
+  --device cuda \
+  --resume
 ```
 
 重点输出：
@@ -288,10 +302,14 @@ python bert/08_topic_model_bertopic.py
 - `bert/artifacts/broad_analysis/topic_model/topic_terms.csv`
 - `bert/artifacts/broad_analysis/topic_model/topic_share_by_period.csv`
 - `bert/artifacts/broad_analysis/topic_model/topic_share_by_period_and_keyword.csv`
+- `bert/artifacts/broad_analysis/topic_model/topic_share_by_ip.csv`
+- `bert/artifacts/broad_analysis/topic_model/topic_share_by_period_and_ip.csv`
+- `bert/artifacts/broad_analysis/topic_model/topic_share_by_period_and_ip_and_keyword.csv`
+- `bert/artifacts/broad_analysis/topic_model/topic_model_summary.json`
 
 ### 09. 关键词语义分析
 
-对 `躺平 / 摆烂 / 佛系` 在不同时间段内的共现词和语义邻域进行分析。
+对 `躺平 / 摆烂 / 佛系` 在不同时间段内的共现词和语义邻域进行分析。运行时会输出分阶段日志，便于区分分词、共现统计和 embedding 排序分别耗时多少。
 
 ```bash
 python bert/09_keyword_semantic_analysis.py
@@ -305,7 +323,7 @@ python bert/09_keyword_semantic_analysis.py
 
 ### 10. 概念漂移分析
 
-比较相邻时间段之间的共现结构、语义邻域和主题分布变化。
+比较相邻时间段之间的共现结构、语义邻域和主题分布变化。除了总体和按关键词比较，也会输出按 IP、按 `IP + 关键词` 的 topic 漂移结果。
 
 ```bash
 python bert/10_concept_drift_analysis.py
@@ -319,6 +337,10 @@ python bert/10_concept_drift_analysis.py
 - `bert/artifacts/broad_analysis/drift_analysis/topic_share_change_by_keyword.csv`
 - `bert/artifacts/broad_analysis/drift_analysis/topic_drift_overall.csv`
 - `bert/artifacts/broad_analysis/drift_analysis/topic_share_change_overall.csv`
+- `bert/artifacts/broad_analysis/drift_analysis/topic_drift_by_ip.csv`
+- `bert/artifacts/broad_analysis/drift_analysis/topic_share_change_by_ip.csv`
+- `bert/artifacts/broad_analysis/drift_analysis/topic_drift_by_ip_and_keyword.csv`
+- `bert/artifacts/broad_analysis/drift_analysis/topic_share_change_by_ip_and_keyword.csv`
 
 ## 推荐的完整顺序
 

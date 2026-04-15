@@ -42,6 +42,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--text_col", default=None, help="Optional forced text column name.")
     parser.add_argument("--time_col", default=None, help="Optional forced time column name.")
     parser.add_argument("--keyword_col", default=None, help="Optional forced keyword column name.")
+    parser.add_argument("--ip_col", default=None, help="Optional forced IP column name.")
     parser.add_argument(
         "--prediction_label_col",
         default="pred_label",
@@ -71,6 +72,7 @@ def main() -> None:
         text_col=args.text_col,
         time_col=args.time_col,
         keyword_col=args.keyword_col,
+        ip_col=args.ip_col,
         keywords=args.keywords,
         positive_label_col=args.prediction_label_col,
         positive_only=not args.include_negative,
@@ -94,6 +96,18 @@ def main() -> None:
             str(period): int(count)
             for period, count in analysis_df["year_month"].fillna("NA").value_counts().sort_index().to_dict().items()
         },
+        "rows_by_ip": {
+            str(ip_value): int(count)
+            for ip_value, count in analysis_df["ip_normalized"].value_counts(dropna=False).sort_index().to_dict().items()
+        },
+        "rows_by_period_and_ip": [
+            {
+                "year_month": str(period),
+                "ip_normalized": str(ip_value),
+                "row_count": int(count),
+            }
+            for (period, ip_value), count in analysis_df.groupby(["year_month", "ip_normalized"], dropna=False).size().sort_index().items()
+        ],
         "metadata": metadata,
     }
     save_json(report_path, report)
