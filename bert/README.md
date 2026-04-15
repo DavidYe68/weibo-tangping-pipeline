@@ -19,6 +19,8 @@
 2. 进入训练阶段的数据，默认都应当是“人工复核过”的 CSV/XLSX。
 3. `04_train_bert_classifier.py` 负责单标签训练。
 4. `05_train_dual_label_classifier.py` 负责 `broad` / `strict` 双标签训练。
+5. `06_predict_bert_classifier.py` 负责把训练好的模型批量打到全量 parquet 上。
+6. `07` 到 `10` 是“全量 broad 语义分析链路”，默认围绕 `broad` 预测结果展开。
 
 ## 目录概览
 
@@ -30,10 +32,22 @@ bert/
 ├── 04_train_bert_classifier.py
 ├── 05_train_dual_label_classifier.py
 ├── 06_predict_bert_classifier.py
-├── lib/
-├── scripts/
-└── data/
+├── 07_build_broad_analysis_base.py
+├── 08_topic_model_bertopic.py
+├── 09_keyword_semantic_analysis.py
+├── 10_concept_drift_analysis.py
+├── lib/             训练、预测和分析阶段的公共模块
+├── scripts/         辅助脚本
+├── data/            抽样表、审核表等人工处理中间文件
+└── artifacts/       模型、评估结果、预测结果、分析结果
 ```
+
+如果按实验阶段来理解：
+
+- `01-03`：样本抽取、预标注、标签整理。
+- `04-05`：模型训练与评估。
+- `06`：全量预测。
+- `07-10`：主题、语义邻域和时间漂移分析。
 
 ## 最常见的真实流程
 
@@ -190,6 +204,190 @@ python3 bert/05_train_dual_label_classifier.py \
 - `inspect/review/top_fp_*.csv`
 - `inspect/review/top_fn_*.csv`
 
+## 进入 07-10 之前
+
+如果你现在已经在 Windows 机器上完成了：
+
+1. 主流程产出 `data/processed/text_dedup/*.parquet`
+2. 人工审核
+3. `05_train_dual_label_classifier.py`
+
+那么接下来建议先跑一次 `06`，把 `broad` 模型打到全量语料上。
+
+### 5. 用 broad 模型做全量预测
+
+典型命令：
+
+```bash
+python3 bert/06_predict_bert_classifier.py \
+  --model_dir "bert/artifacts/dual_label_run/broad/best_model" \
+  --input_pattern "data/processed/text_dedup/*.parquet" \
+  --output_dir "data/processed/text_dedup_predicted_broad" \
+  --device cuda
+```
+
+这里建议显式把输出目录写成 `data/processed/text_dedup_predicted_broad`，因为 `07_build_broad_analysis_base.py` 默认就是从这里读。
+
+`06` 常见输出列包括：
+
+- `pred_label`
+- `pred_label_text`
+- `pred_prob_1`
+- `pred_prob_0`
+- `pred_confidence`
+
+如果你在 `06` 里用了默认输出目录 `data/processed/text_dedup_predicted/`，也没问题，只要在 `07` 里同步改 `--input_pattern`。
+
+## 07-10 分析链路
+
+### 6. `07_build_broad_analysis_base.py`
+
+作用：
+
+- 读取 `06` 的预测结果
+- 规范化文本列、时间列、关键词列
+- 默认只保留 `pred_label == 1` 的正样本
+- 生成后续 `08` / `09` 共用的分析底表
+
+默认命令：
+
+```bash
+python3 bert/07_build_broad_analysis_base.py
+```
+
+如果你的预测文件放在别的位置：
+
+```bash
+python3 bert/07_build_broad_analysis_base.py \
+  --input_pattern "data/processed/text_dedup_predicted/*.parquet" \
+  --output_path "bert/artifacts/broad_analysis/analysis_base.parquet"
+```
+
+常用可选参数：
+
+- `--include_negative`：连负样本也保留
+- `--min_confidence 0.8`：只保留置信度足够高的样本
+- `--text_col` / `--time_col` / `--keyword_col`：强制指定列名
+
+重点输出：
+
+- `bert/artifacts/broad_analysis/analysis_base.parquet`
+- `bert/artifacts/broad_analysis/analysis_base_report.json`
+
+### 7. `08_topic_model_bertopic.py`
+
+作用：
+
+- 在 `07` 生成的分析底表上做 BERTopic
+- 输出文档级 topic 结果、topic 词表、按时间的 topic 占比
+
+默认命令：
+
+```bash
+python3 bert/08_topic_model_bertopic.py
+```
+
+常用变体：
+
+```bash
+python3 bert/08_topic_model_bertopic.py \
+  --time_granularity quarter \
+  --min_topic_size 50 \
+  --top_n_words 15 \
+  --save_model
+```
+
+重点输出：
+
+- `bert/artifacts/broad_analysis/topic_model/document_topics.parquet`
+- `bert/artifacts/broad_analysis/topic_model/topic_info.csv`
+- `bert/artifacts/broad_analysis/topic_model/topic_terms.csv`
+- `bert/artifacts/broad_analysis/topic_model/topic_share_by_period.csv`
+- `bert/artifacts/broad_analysis/topic_model/topic_share_by_period_and_keyword.csv`
+- `bert/artifacts/broad_analysis/topic_model/topic_model_summary.json`
+
+### 8. `09_keyword_semantic_analysis.py`
+
+作用：
+
+- 对每个关键词在不同时间段做共现词分析
+- 用 embedding 对候选词再排序，得到 semantic neighbors
+
+默认命令：
+
+```bash
+python3 bert/09_keyword_semantic_analysis.py
+```
+
+常用变体：
+
+```bash
+python3 bert/09_keyword_semantic_analysis.py \
+  --time_granularity quarter \
+  --min_doc_freq 10 \
+  --top_k_terms 80 \
+  --top_k_neighbors 30
+```
+
+重点输出：
+
+- `bert/artifacts/broad_analysis/semantic_analysis/keyword_cooccurrence.csv`
+- `bert/artifacts/broad_analysis/semantic_analysis/keyword_semantic_neighbors.csv`
+- `bert/artifacts/broad_analysis/semantic_analysis/tokenized_analysis_base.parquet`
+- `bert/artifacts/broad_analysis/semantic_analysis/semantic_analysis_summary.json`
+
+### 9. `10_concept_drift_analysis.py`
+
+作用：
+
+- 比较相邻时间段的共现词变化
+- 比较相邻时间段的 semantic neighbors 变化
+- 比较相邻时间段的 topic share 变化
+
+默认命令：
+
+```bash
+python3 bert/10_concept_drift_analysis.py
+```
+
+常用变体：
+
+```bash
+python3 bert/10_concept_drift_analysis.py \
+  --time_granularity quarter \
+  --top_n 30
+```
+
+重点输出：
+
+- `bert/artifacts/broad_analysis/drift_analysis/keyword_collocation_drift.csv`
+- `bert/artifacts/broad_analysis/drift_analysis/keyword_neighbor_drift.csv`
+- `bert/artifacts/broad_analysis/drift_analysis/topic_drift_by_keyword.csv`
+- `bert/artifacts/broad_analysis/drift_analysis/topic_share_change_by_keyword.csv`
+- `bert/artifacts/broad_analysis/drift_analysis/topic_drift_overall.csv`
+- `bert/artifacts/broad_analysis/drift_analysis/topic_share_change_overall.csv`
+- `bert/artifacts/broad_analysis/drift_analysis/drift_analysis_summary.json`
+
+## Windows 机器上的注意事项
+
+`08` / `09` 会额外依赖：
+
+- `bertopic`
+- `sentence-transformers`
+- `jieba`
+
+它们已经写在根目录 [`requirements.txt`](../requirements.txt) 里，但第一次运行 embedding 模型时，通常还会下载模型权重。
+
+如果你的 Windows 机器联网：
+
+- 直接在已安装 `requirements.txt` 的环境里运行即可。
+
+如果你的 Windows 机器离线：
+
+- 先把 embedding 模型缓存好，或者把模型目录拷到本地。
+- 运行 `08` / `09` 时把 `--embedding_model` 指到本地目录。
+- 再加上 `--local_files_only`，避免脚本尝试联网下载。
+
 ## 最后建议
 
 更稳妥的习惯是：
@@ -198,6 +396,8 @@ python3 bert/05_train_dual_label_classifier.py \
 2. `02` 预标注。
 3. 人工审核。
 4. 审核后的多个 CSV/XLSX 直接喂给 `04` 或 `05`。
-5. 需要换测试集时，只改命令参数，不改脚本逻辑。
+5. 用 `05` 产出的 `broad/best_model` 跑 `06` 全量预测。
+6. 再顺序跑 `07`、`08`、`09`、`10`。
+7. 需要换测试集或换分析口径时，只改命令参数，不改脚本逻辑。
 
 这套方式比维护一堆固定案例更稳，也更符合真实研究流程。
