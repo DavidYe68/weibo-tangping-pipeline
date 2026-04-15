@@ -153,6 +153,12 @@ def parse_args() -> argparse.Namespace:
         help="Device for the sentence-transformers embedding model.",
     )
     parser.add_argument(
+        "--umap_verbose",
+        action=argparse.BooleanOptionalAction,
+        default=True,
+        help="Show UMAP progress logs during BERTopic dimensionality reduction.",
+    )
+    parser.add_argument(
         "--resume",
         action="store_true",
         help="Resume from checkpointed embeddings if available.",
@@ -196,8 +202,28 @@ def load_sentence_encoder(args: argparse.Namespace, *, emit):
 
 def build_bertopic_model(args: argparse.Namespace, *, embedding_model, emit):
     BERTopic = load_bertopic_class()
+    umap_model = None
+    try:
+        from umap import UMAP
+    except ImportError:
+        emit("UMAP is not installed; BERTopic will fall back to its default reducer.")
+    else:
+        umap_model = UMAP(
+            n_neighbors=15,
+            n_components=5,
+            min_dist=0.0,
+            metric="cosine",
+            low_memory=False,
+            verbose=args.umap_verbose,
+        )
+        emit(
+            "Using explicit UMAP reducer "
+            f"(n_neighbors=15, n_components=5, min_dist=0.0, metric=cosine, "
+            f"low_memory=False, verbose={args.umap_verbose})"
+        )
     topic_model = BERTopic(
         embedding_model=embedding_model,
+        umap_model=umap_model,
         min_topic_size=args.min_topic_size,
         top_n_words=args.top_n_words,
         nr_topics=args.nr_topics,
