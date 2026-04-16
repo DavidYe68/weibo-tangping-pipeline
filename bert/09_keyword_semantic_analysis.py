@@ -24,6 +24,7 @@ from lib.analysis_utils import (
 from lib.io_utils import save_json
 
 DEFAULT_STOPWORDS_PATH = "bert/config/topic_stopwords.txt"
+DEFAULT_EMBEDDING_MODEL = "BAAI/bge-small-zh-v1.5"
 TOKEN_RE = re.compile(r"[\u4e00-\u9fffA-Za-z0-9_]+")
 
 
@@ -125,7 +126,7 @@ def parse_args() -> argparse.Namespace:
     )
     parser.add_argument(
         "--embedding_model",
-        default="sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2",
+        default=DEFAULT_EMBEDDING_MODEL,
         help="SentenceTransformer model name or local path.",
     )
     parser.add_argument(

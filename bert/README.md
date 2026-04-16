@@ -332,6 +332,7 @@ cp bert/llm_label_local.example.toml bert/llm_label_local.toml
 .venv/bin/python bert/08_topic_model_bertopic.py \
   --time_granularity quarter \
   --min_topic_size 50 \
+  --umap_n_neighbors 30 \
   --top_n_words 15 \
   --device cuda \
   --resume \
@@ -341,11 +342,12 @@ cp bert/llm_label_local.example.toml bert/llm_label_local.toml
 常用可选参数：
 
 - `--device auto|cpu|cuda|mps`：控制 sentence-transformers 的编码设备
-- `--embedding_model`：指定模型名或本地目录
+- `--embedding_model`：指定模型名或本地目录；默认改为 `BAAI/bge-small-zh-v1.5`
 - `--topic_language multilingual|english`：BERTopic 的语言模式；中文语料建议保持默认 `multilingual`
 - `--topic_tokenizer jieba|default`：topic 提词的分词方式；默认 `jieba`
 - `--topic_stopwords_path`：topic 提词停用词表，默认 `bert/config/topic_stopwords.txt`
 - `--topic_token_min_length`：`jieba` 提词时保留的最短 token 长度，默认 `2`
+- `--umap_n_neighbors`：显式控制 UMAP 邻居数，默认 `30`
 - `--local_files_only`：只从本地加载 embedding 资源
 - `--calculate_probabilities`：显式计算“每篇文档 x 全部 topic”的完整概率矩阵；非常吃内存，默认关闭
 - `--resume`：如果已有 embedding / UMAP checkpoint，则尽量从 checkpoint 继续
@@ -365,6 +367,10 @@ cp bert/llm_label_local.example.toml bert/llm_label_local.toml
 - `bert/artifacts/broad_analysis/topic_model/topic_share_by_period_and_ip.csv`
 - `bert/artifacts/broad_analysis/topic_model/topic_share_by_period_and_ip_and_keyword.csv`
 - `bert/artifacts/broad_analysis/topic_model/topic_model_summary.json`
+
+补充：
+
+- `topic_info.csv` 会额外预留 `topic_label_machine` 和 `topic_label_zh` 两列，便于后续手工补中文主题标签。
 
 ### 9. `09_keyword_semantic_analysis.py`
 
@@ -401,6 +407,7 @@ cp bert/llm_label_local.example.toml bert/llm_label_local.toml
 补充：
 
 - `08` / `09` 默认共用停用词表 `bert/config/topic_stopwords.txt`
+- `09` 的默认 embedding 也改为 `BAAI/bge-small-zh-v1.5`，和 `08` 保持一致
 
 ### 10. `10_concept_drift_analysis.py`
 

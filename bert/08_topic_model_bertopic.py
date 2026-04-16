@@ -31,6 +31,8 @@ from lib.analysis_utils import (
 from lib.io_utils import save_json
 
 DEFAULT_TOPIC_STOPWORDS_PATH = "bert/config/topic_stopwords.txt"
+DEFAULT_EMBEDDING_MODEL = "BAAI/bge-small-zh-v1.5"
+DEFAULT_UMAP_N_NEIGHBORS = 30
 TOPIC_TOKEN_RE = re.compile(r"[\u4e00-\u9fffA-Za-z0-9_]+")
 TOPIC_SEGMENT_RE = re.compile(r"[A-Za-z0-9_]+|[\u4e00-\u9fff]+")
 
@@ -218,7 +220,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--seed", type=int, default=42, help="Random seed.")
     parser.add_argument(
         "--embedding_model",
-        default="sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2",
+        default=DEFAULT_EMBEDDING_MODEL,
         help="SentenceTransformer model name or local path.",
     )
     parser.add_argument(
@@ -265,6 +267,12 @@ def parse_args() -> argparse.Namespace:
         action=argparse.BooleanOptionalAction,
         default=True,
         help="Show UMAP progress logs during BERTopic dimensionality reduction.",
+    )
+    parser.add_argument(
+        "--umap_n_neighbors",
+        type=int,
+        default=DEFAULT_UMAP_N_NEIGHBORS,
+        help="UMAP n_neighbors parameter. Larger values encourage broader topic neighborhoods.",
     )
     parser.add_argument(
         "--umap_low_memory",
@@ -363,7 +371,7 @@ def build_bertopic_model(args: argparse.Namespace, *, embedding_model, emit):
         emit("UMAP is not installed; BERTopic will fall back to its default reducer.")
     else:
         umap_model = UMAP(
-            n_neighbors=15,
+            n_neighbors=args.umap_n_neighbors,
             n_components=5,
             min_dist=0.0,
             metric="cosine",
@@ -373,7 +381,7 @@ def build_bertopic_model(args: argparse.Namespace, *, embedding_model, emit):
         )
         emit(
             "Using explicit UMAP reducer "
-            f"(n_neighbors=15, n_components=5, min_dist=0.0, metric=cosine, "
+            f"(n_neighbors={args.umap_n_neighbors}, n_components=5, min_dist=0.0, metric=cosine, "
             f"low_memory={args.umap_low_memory}, random_state={args.seed}, verbose={args.umap_verbose})"
         )
     try:
@@ -422,7 +430,7 @@ def build_reducer_signature(topic_model, args: argparse.Namespace) -> dict[str, 
     if reducer_name == "UMAP":
         signature.update(
             {
-                "n_neighbors": 15,
+                "n_neighbors": int(args.umap_n_neighbors),
                 "n_components": 5,
                 "min_dist": 0.0,
                 "metric": "cosine",
@@ -439,7 +447,7 @@ def reduce_embeddings_with_checkpoint(
     args: argparse.Namespace,
     embeddings: np.ndarray,
     checkpoint_dir: Path,
-    manifest: dict,
+    previous_manifest: dict,
     current_fingerprint: str,
     emit,
 ) -> tuple[np.ndarray, Path, Path, bool]:
@@ -451,8 +459,9 @@ def reduce_embeddings_with_checkpoint(
         args.resume
         and reduced_embeddings_checkpoint_path.exists()
         and reducer_model_checkpoint_path.exists()
-        and manifest.get("document_fingerprint") == current_fingerprint
-        and manifest.get("reducer_signature") == reducer_signature
+        and previous_manifest.get("document_fingerprint") == current_fingerprint
+        and previous_manifest.get("reducer_signature") == reducer_signature
+        and previous_manifest.get("embedding_model") == args.embedding_model
     )
 
     if can_resume_reducer:
@@ -580,7 +589,7 @@ def main() -> None:
         keyword_col=args.keyword_col,
         time_col=args.time_col,
     )
-    manifest = load_checkpoint_manifest(checkpoint_manifest_path)
+    previous_manifest = load_checkpoint_manifest(checkpoint_manifest_path)
 
     texts = filtered[args.text_col].tolist()
     encoder = None
@@ -588,24 +597,32 @@ def main() -> None:
     embeddings: np.ndarray
 
     if args.resume and embeddings_checkpoint_path.exists() and checkpoint_manifest_path.exists():
-        emit(f"Resuming from embedding checkpoint: {embeddings_checkpoint_path}")
-        checkpoint_fingerprint = manifest.get("document_fingerprint")
+        checkpoint_fingerprint = previous_manifest.get("document_fingerprint")
+        checkpoint_embedding_model = previous_manifest.get("embedding_model")
         if checkpoint_fingerprint != current_fingerprint:
             raise ValueError(
                 "Checkpointed embeddings do not match the current filtered dataset. "
                 "Delete the checkpoint directory or rerun without --resume."
             )
-        embedding_start = time.perf_counter()
-        embeddings = np.load(embeddings_checkpoint_path, mmap_mode="r")
-        if embeddings.shape[0] != len(texts):
-            raise ValueError(
-                "Embedding checkpoint row count does not match the filtered dataset. "
-                "Delete the checkpoint or rerun without --resume."
+        if checkpoint_embedding_model != args.embedding_model:
+            emit(
+                "Embedding checkpoint metadata does not match the requested embedding model; "
+                "recomputing embeddings instead of resuming."
             )
-        emit(
-            f"Loaded {embeddings.shape[0]} embeddings from checkpoint in {format_elapsed(embedding_start)}"
-        )
-    else:
+        else:
+            emit(f"Resuming from embedding checkpoint: {embeddings_checkpoint_path}")
+            embedding_start = time.perf_counter()
+            embeddings = np.load(embeddings_checkpoint_path, mmap_mode="r")
+            if embeddings.shape[0] != len(texts):
+                raise ValueError(
+                    "Embedding checkpoint row count does not match the filtered dataset. "
+                    "Delete the checkpoint or rerun without --resume."
+                )
+            emit(
+                f"Loaded {embeddings.shape[0]} embeddings from checkpoint in {format_elapsed(embedding_start)}"
+            )
+            checkpoint_embedding_model = args.embedding_model
+    if "embeddings" not in locals():
         model_start = time.perf_counter()
         encoder, embedding_device = load_sentence_encoder(args, emit=emit)
         emit(f"Embedding model loading finished in {format_elapsed(model_start)}")
@@ -638,13 +655,13 @@ def main() -> None:
             "text_col": args.text_col,
             "keyword_col": args.keyword_col,
             "time_col": args.time_col,
+            "embedding_model": args.embedding_model,
             "reducer_signature": reducer_signature,
             "embeddings_checkpoint_path": str(embeddings_checkpoint_path.resolve()),
             "reduced_embeddings_checkpoint_path": str(reduced_embeddings_checkpoint_path.resolve()),
             "reducer_model_checkpoint_path": str(reducer_model_checkpoint_path.resolve()),
         },
     )
-    manifest = load_checkpoint_manifest(checkpoint_manifest_path)
     emit(f"Checkpointed filtered documents to {filtered_checkpoint_path}")
 
     fit_start = time.perf_counter()
@@ -654,7 +671,7 @@ def main() -> None:
             args=args,
             embeddings=embeddings,
             checkpoint_dir=checkpoint_dir,
-            manifest=manifest,
+            previous_manifest=previous_manifest,
             current_fingerprint=current_fingerprint,
             emit=emit,
         )
@@ -694,12 +711,22 @@ def main() -> None:
     else:
         doc_topics["topic_probability"] = float("nan")
 
-    topic_info = topic_model.get_topic_info()
+    topic_info = topic_model.get_topic_info().copy()
+    if "topic_label_machine" not in topic_info.columns:
+        if "Name" in topic_info.columns:
+            topic_info["topic_label_machine"] = topic_info["Name"].fillna("").astype("string")
+        else:
+            topic_info["topic_label_machine"] = topic_info["Topic"].map(lambda value: f"Topic {value}")
+    if "topic_label_zh" not in topic_info.columns:
+        topic_info["topic_label_zh"] = pd.Series([""] * len(topic_info), index=topic_info.index, dtype="string")
+
     topic_labels = {}
     for _, row in topic_info.iterrows():
         topic_id = int(row["Topic"])
-        label = row.get("Name")
-        if pd.isna(label):
+        label = row.get("topic_label_machine")
+        if pd.isna(label) or not str(label).strip():
+            label = row.get("Name")
+        if pd.isna(label) or not str(label).strip():
             label = f"Topic {topic_id}"
         topic_labels[topic_id] = str(label)
 
@@ -876,6 +903,7 @@ def main() -> None:
         "topic_token_min_length": int(args.topic_token_min_length),
         "calculate_probabilities": bool(args.calculate_probabilities),
         "umap_low_memory": bool(args.umap_low_memory),
+        "umap_n_neighbors": int(args.umap_n_neighbors),
         "hdbscan_core_dist_n_jobs": int(args.hdbscan_core_dist_n_jobs),
         "reducer_signature": reducer_signature,
         "resolved_ip_col": resolved_ip_col,
