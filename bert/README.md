@@ -446,6 +446,42 @@ cp bert/llm_label_local.example.toml bert/llm_label_local.toml
 - `bert/artifacts/broad_analysis/drift_analysis/topic_share_change_by_ip_and_keyword.csv`
 - `bert/artifacts/broad_analysis/drift_analysis/drift_analysis_summary.json`
 
+### 11. `11_visualize_topic_outputs.py`
+
+作用：
+
+- 直接读取 `08` 产出的 topic share CSV，生成中期汇报常用的交互式 HTML 图
+- 同时补上 `主题 x 关键词画像`、`主题时间演化`、`省份热力图` 三类可视化
+- 不额外依赖 `matplotlib / pyecharts / geopandas`，只需要已有的 `pandas`
+
+默认命令：
+
+```bash
+.venv/bin/python bert/11_visualize_topic_outputs.py
+```
+
+常用变体：
+
+```bash
+.venv/bin/python bert/11_visualize_topic_outputs.py \
+  --top_n_topics 10 \
+  --map_top_n_topics 12
+```
+
+重点输出：
+
+- `bert/artifacts/broad_analysis/topic_visuals/topic_keyword_profiles.html`
+- `bert/artifacts/broad_analysis/topic_visuals/topic_time_evolution.html`
+- `bert/artifacts/broad_analysis/topic_visuals/topic_ip_heatmap.html`
+- `bert/artifacts/broad_analysis/topic_visuals/topic_keyword_profile_overall.csv`
+- `bert/artifacts/broad_analysis/topic_visuals/topic_keyword_profile_latest.csv`
+- `bert/artifacts/broad_analysis/topic_visuals/topic_visualization_summary.json`
+
+补充：
+
+- 图表使用 ECharts CDN 资源，打开 HTML 时需要能访问对应脚本地址。
+- 如果你已经在 `topic_info.csv` 里补了 `topic_label_zh`，图里会优先使用人工中文标签；否则会回退到 `topic_terms.csv` 的前三个词。
+
 ## Windows 机器上的注意事项
 
 `08` / `09` 会额外依赖：
