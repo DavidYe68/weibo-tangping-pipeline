@@ -76,6 +76,19 @@ def load_tabular_files(
     return pd.concat(frames, ignore_index=True), files
 
 
+def load_term_list(path: str | Path | None) -> list[str]:
+    if path is None:
+        return []
+
+    content = Path(path).read_text(encoding="utf-8")
+    terms: list[str] = []
+    for line in content.splitlines():
+        normalized = line.strip()
+        if normalized:
+            terms.append(normalized)
+    return terms
+
+
 def normalize_cli_keywords(values: Sequence[str] | None) -> list[str]:
     raw_values = list(values) if values else list(DEFAULT_ANALYSIS_KEYWORDS)
     resolved: list[str] = []

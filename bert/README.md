@@ -161,6 +161,11 @@ bert/
 
 如果自动识别不到，显式传 `--text_col`。
 
+补充约定：
+
+- BERT 训练 / 预测默认优先 `cleaned_text`，适合把 emoji 压成统一占位的二分类场景
+- `07`-`10` 分析链也默认优先 `cleaned_text`；如果你想实验保留 emoji 文本对主题词的影响，再显式传 `--text_col cleaned_text_with_emoji`
+
 ### 单标签列
 
 `04_train_bert_classifier.py` 会优先识别：
@@ -251,6 +256,7 @@ bert/
 - 自动识别并规范化 IP 属地列；缺失 IP 会统一记为 `UNKNOWN_IP`
 - 默认只保留 `pred_label == 1` 的正样本
 - 生成后续 `08` / `09` 共用的分析底表
+- 默认沿用仓库的文本列自动识别顺序，通常会选到 `cleaned_text`
 
 默认命令：
 
@@ -311,7 +317,7 @@ bert/
 - `--embedding_model`：指定模型名或本地目录
 - `--topic_language multilingual|english`：BERTopic 的语言模式；中文语料建议保持默认 `multilingual`
 - `--topic_tokenizer jieba|default`：topic 提词的分词方式；默认 `jieba`
-- `--topic_stopwords_path`：自定义 topic 提词停用词表（UTF-8 文本，每行一个）
+- `--topic_stopwords_path`：topic 提词停用词表，默认 `bert/config/topic_stopwords.txt`
 - `--topic_token_min_length`：`jieba` 提词时保留的最短 token 长度，默认 `2`
 - `--local_files_only`：只从本地加载 embedding 资源
 - `--calculate_probabilities`：显式计算“每篇文档 x 全部 topic”的完整概率矩阵；非常吃内存，默认关闭
@@ -364,6 +370,10 @@ bert/
 - `bert/artifacts/broad_analysis/semantic_analysis/keyword_semantic_neighbors.csv`
 - `bert/artifacts/broad_analysis/semantic_analysis/tokenized_analysis_base.parquet`
 - `bert/artifacts/broad_analysis/semantic_analysis/semantic_analysis_summary.json`
+
+补充：
+
+- `08` / `09` 默认共用停用词表 `bert/config/topic_stopwords.txt`
 
 ### 10. `10_concept_drift_analysis.py`
 

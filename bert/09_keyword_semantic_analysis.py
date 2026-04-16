@@ -15,6 +15,7 @@ from lib.analysis_utils import (
     DEFAULT_ANALYSIS_KEYWORDS,
     coerce_period_series,
     load_tabular_files,
+    load_term_list,
     normalize_cli_keywords,
     resolve_emit,
     save_dataframe,
@@ -22,43 +23,7 @@ from lib.analysis_utils import (
 )
 from lib.io_utils import save_json
 
-
-DEFAULT_STOPWORDS = {
-    "我们",
-    "你们",
-    "他们",
-    "就是",
-    "一个",
-    "没有",
-    "这个",
-    "那个",
-    "真的",
-    "自己",
-    "现在",
-    "因为",
-    "但是",
-    "还是",
-    "已经",
-    "非常",
-    "有点",
-    "一下",
-    "一下子",
-    "感觉",
-    "觉得",
-    "时候",
-    "大家",
-    "可以",
-    "不是",
-    "如果",
-    "什么",
-    "怎么",
-    "为什么",
-    "而且",
-    "然后",
-    "还有",
-    "一个人",
-}
-
+DEFAULT_STOPWORDS_PATH = "bert/config/topic_stopwords.txt"
 TOKEN_RE = re.compile(r"[\u4e00-\u9fffA-Za-z0-9_]+")
 
 
@@ -125,8 +90,8 @@ def parse_args() -> argparse.Namespace:
     )
     parser.add_argument(
         "--stopwords_path",
-        default=None,
-        help="Optional newline-delimited stopword list.",
+        default=DEFAULT_STOPWORDS_PATH,
+        help="Newline-delimited stopword list.",
     )
     parser.add_argument(
         "--token_min_length",
@@ -178,16 +143,7 @@ def parse_args() -> argparse.Namespace:
 
 
 def load_stopwords(path: str | None) -> set[str]:
-    stopwords = set(DEFAULT_STOPWORDS)
-    if not path:
-        return stopwords
-
-    content = Path(path).read_text(encoding="utf-8")
-    for line in content.splitlines():
-        normalized = line.strip()
-        if normalized:
-            stopwords.add(normalized)
-    return stopwords
+    return set(load_term_list(path))
 
 
 def load_tokenizer():

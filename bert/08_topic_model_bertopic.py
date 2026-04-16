@@ -21,6 +21,7 @@ from lib.analysis_utils import (
     detect_ip_column,
     flatten_topic_terms,
     load_tabular_files,
+    load_term_list,
     normalize_cli_keywords,
     period_column_name,
     resolve_emit,
@@ -29,41 +30,7 @@ from lib.analysis_utils import (
 )
 from lib.io_utils import save_json
 
-DEFAULT_TOPIC_STOPWORDS = {
-    "我们",
-    "你们",
-    "他们",
-    "就是",
-    "一个",
-    "没有",
-    "这个",
-    "那个",
-    "真的",
-    "自己",
-    "现在",
-    "因为",
-    "但是",
-    "还是",
-    "已经",
-    "非常",
-    "有点",
-    "一下",
-    "一下子",
-    "感觉",
-    "觉得",
-    "时候",
-    "大家",
-    "可以",
-    "不是",
-    "如果",
-    "什么",
-    "怎么",
-    "为什么",
-    "而且",
-    "然后",
-    "还有",
-    "一个人",
-}
+DEFAULT_TOPIC_STOPWORDS_PATH = "bert/config/topic_stopwords.txt"
 TOPIC_TOKEN_RE = re.compile(r"[\u4e00-\u9fffA-Za-z0-9_]+")
 TOPIC_SEGMENT_RE = re.compile(r"[A-Za-z0-9_]+|[\u4e00-\u9fff]+")
 
@@ -170,19 +137,6 @@ def missing_dependency_message(package_name: str) -> str:
     )
 
 
-def load_stopwords(path: str | None) -> set[str]:
-    stopwords = set(DEFAULT_TOPIC_STOPWORDS)
-    if not path:
-        return stopwords
-
-    content = Path(path).read_text(encoding="utf-8")
-    for line in content.splitlines():
-        normalized = line.strip()
-        if normalized:
-            stopwords.add(normalized)
-    return stopwords
-
-
 def has_jieba() -> bool:
     try:
         import jieba  # noqa: F401
@@ -281,8 +235,8 @@ def parse_args() -> argparse.Namespace:
     )
     parser.add_argument(
         "--topic_stopwords_path",
-        default=None,
-        help="Optional UTF-8 text file with one stopword per line for topic term extraction.",
+        default=DEFAULT_TOPIC_STOPWORDS_PATH,
+        help="UTF-8 text file with one stopword per line for topic term extraction.",
     )
     parser.add_argument(
         "--topic_token_min_length",
@@ -380,7 +334,7 @@ def build_topic_vectorizer(args: argparse.Namespace, *, emit):
         emit("Using default CountVectorizer tokenization for topic term extraction")
         return None
 
-    stopwords = load_stopwords(args.topic_stopwords_path)
+    stopwords = set(load_term_list(args.topic_stopwords_path))
     jieba_available = has_jieba()
     emit(
         "Using Chinese CountVectorizer tokenization for topic term extraction "

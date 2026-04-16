@@ -39,7 +39,14 @@ def parse_args() -> argparse.Namespace:
         default=list(DEFAULT_ANALYSIS_KEYWORDS),
         help="Canonical keywords to keep. Defaults to 躺平 摆烂 佛系.",
     )
-    parser.add_argument("--text_col", default=None, help="Optional forced text column name.")
+    parser.add_argument(
+        "--text_col",
+        default=None,
+        help=(
+            "Optional forced text column name. By default it follows the repo text-column "
+            "auto-detection order, which usually resolves to cleaned_text."
+        ),
+    )
     parser.add_argument("--time_col", default=None, help="Optional forced time column name.")
     parser.add_argument("--keyword_col", default=None, help="Optional forced keyword column name.")
     parser.add_argument("--ip_col", default=None, help="Optional forced IP column name.")
