@@ -37,8 +37,41 @@ bert/
 ├── lib/             训练、预测和分析阶段的公共模块
 ├── scripts/         辅助脚本
 ├── data/            抽样表、审核表等人工处理中间文件
-└── artifacts/       模型、评估结果、预测结果、分析结果
+└── artifacts/       模型、评估结果、预测结果、分析结果（建议按 runs/ 和 broad_analysis/ 分层）
 ```
+
+## artifacts 目录约定
+
+为了避免训练 run、分析中间结果和历史可视化堆在同一层，建议把 `bert/artifacts/` 固定整理成下面这个结构：
+
+```text
+bert/artifacts/
+├── runs/
+│   ├── dual_label/      dual-label 训练 run
+│   └── single_label/    single-label 训练 run
+└── broad_analysis/      07-11 分析链的标准输出
+    └── legacy/          已淘汰或重复的历史输出
+```
+
+补充约定：
+
+- `04` / `05` 的新训练产物，优先直接写到 `bert/artifacts/runs/...`
+- `07`-`11` 的分析产物，继续放在 `bert/artifacts/broad_analysis/`
+- BERTopic 主结果目录优先使用 `bert/artifacts/broad_analysis/topic_model_BAAI/`
+- 历史遗留的旧版 topic 可视化或按 embedding 名额外分出的目录，统一挪到 `bert/artifacts/broad_analysis/legacy/`
+
+仓库里带了一个可重复执行的整理脚本：
+
+```bash
+.venv/bin/python bert/scripts/organize_artifacts.py
+```
+
+说明：
+
+- 这个脚本会把顶层的训练 run 归档到 `runs/`
+- 会把旧版或重复的 broad-analysis 输出归到 `legacy/`
+- 如果 `topic_visualization/` 里只有一层模型名子目录，会把 bundle 摊平回标准位置
+- 脚本默认值里仍保留了部分旧路径名以兼容老命令；如果你想从一开始就保持整洁，训练时请显式把输出目录写到 `runs/`
 
 ## 最常见的真实流程
 
@@ -117,7 +150,7 @@ cp bert/llm_label_local.example.toml bert/llm_label_local.toml
 ```bash
 .venv/bin/python bert/04_train_bert_classifier.py \
   --input_csv "bert/data/reviewed_a.csv" "bert/data/reviewed_b.csv" \
-  --output_dir "bert/artifacts/single_label_run"
+  --output_dir "bert/artifacts/runs/single_label/single_label_run"
 ```
 
 如果你想显式指定哪个文件只进训练、哪个文件单独留作测试：
@@ -127,7 +160,7 @@ cp bert/llm_label_local.example.toml bert/llm_label_local.toml
   --train_csv "bert/data/reviewed_train_extra.csv" \
   --input_csv "bert/data/reviewed_pool_a.csv" "bert/data/reviewed_pool_b.csv" \
   --test_csv "bert/data/reviewed_holdout.csv" \
-  --output_dir "bert/artifacts/single_label_holdout"
+  --output_dir "bert/artifacts/runs/single_label/single_label_holdout"
 ```
 
 规则：
@@ -144,7 +177,7 @@ cp bert/llm_label_local.example.toml bert/llm_label_local.toml
 ```bash
 .venv/bin/python bert/05_train_dual_label_classifier.py \
   --input_path "bert/data/reviewed_part1.csv" "bert/data/reviewed_part2.csv" \
-  --base_output_dir "bert/artifacts/dual_label_run"
+  --base_output_dir "bert/artifacts/runs/dual_label/dual_label_run"
 ```
 
 如果你想把某一份文件固定留作测试，另一些只进训练：
@@ -154,7 +187,7 @@ cp bert/llm_label_local.example.toml bert/llm_label_local.toml
   --input_path "bert/data/reviewed_pool_a.csv" "bert/data/reviewed_pool_b.csv" \
   --train_path "bert/data/reviewed_manual_boost.csv" \
   --test_path "bert/data/reviewed_external_test.csv" \
-  --base_output_dir "bert/artifacts/dual_label_holdout"
+  --base_output_dir "bert/artifacts/runs/dual_label/dual_label_holdout"
 ```
 
 规则和 `04` 一样：
@@ -258,7 +291,7 @@ cp bert/llm_label_local.example.toml bert/llm_label_local.toml
 
 ```bash
 .venv/bin/python bert/06_predict_bert_classifier.py \
-  --model_dir "bert/artifacts/dual_label_run/broad/best_model" \
+  --model_dir "bert/artifacts/runs/dual_label/dual_label_run/broad/best_model" \
   --input_pattern "data/processed/text_dedup/*.parquet" \
   --output_dir "data/processed/text_dedup_predicted_broad" \
   --device cuda
@@ -358,19 +391,21 @@ cp bert/llm_label_local.example.toml bert/llm_label_local.toml
 
 重点输出：
 
-- `bert/artifacts/broad_analysis/topic_model/document_topics.parquet`
-- `bert/artifacts/broad_analysis/topic_model/topic_info.csv`
-- `bert/artifacts/broad_analysis/topic_model/topic_terms.csv`
-- `bert/artifacts/broad_analysis/topic_model/topic_share_by_period.csv`
-- `bert/artifacts/broad_analysis/topic_model/topic_share_by_period_and_keyword.csv`
-- `bert/artifacts/broad_analysis/topic_model/topic_share_by_ip.csv`
-- `bert/artifacts/broad_analysis/topic_model/topic_share_by_period_and_ip.csv`
-- `bert/artifacts/broad_analysis/topic_model/topic_share_by_period_and_ip_and_keyword.csv`
-- `bert/artifacts/broad_analysis/topic_model/topic_model_summary.json`
+- `bert/artifacts/broad_analysis/topic_model_BAAI/document_topics.parquet`
+- `bert/artifacts/broad_analysis/topic_model_BAAI/topic_info.csv`
+- `bert/artifacts/broad_analysis/topic_model_BAAI/topic_overview.csv`
+- `bert/artifacts/broad_analysis/topic_model_BAAI/topic_terms.csv`
+- `bert/artifacts/broad_analysis/topic_model_BAAI/topic_share_by_period.csv`
+- `bert/artifacts/broad_analysis/topic_model_BAAI/topic_share_by_period_and_keyword.csv`
+- `bert/artifacts/broad_analysis/topic_model_BAAI/topic_share_by_ip.csv`
+- `bert/artifacts/broad_analysis/topic_model_BAAI/topic_share_by_period_and_ip.csv`
+- `bert/artifacts/broad_analysis/topic_model_BAAI/topic_share_by_period_and_ip_and_keyword.csv`
+- `bert/artifacts/broad_analysis/topic_model_BAAI/topic_model_summary.json`
 
 补充：
 
 - `topic_info.csv` 会额外预留 `topic_label_machine` 和 `topic_label_zh` 两列，便于后续手工补中文主题标签。
+- `topic_overview.csv` 会把主题规模、峰值时间、dominant keyword 和 top terms 预先整理好，适合直接接中期展示或人工 topic 编码。
 
 ### 9. `09_keyword_semantic_analysis.py`
 

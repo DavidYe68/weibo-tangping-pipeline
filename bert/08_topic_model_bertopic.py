@@ -190,7 +190,7 @@ def parse_args() -> argparse.Namespace:
     )
     parser.add_argument(
         "--output_dir",
-        default="bert/artifacts/broad_analysis/topic_model",
+        default="bert/artifacts/broad_analysis/topic_model_BAAI",
         help="Directory for BERTopic outputs.",
     )
     parser.add_argument(

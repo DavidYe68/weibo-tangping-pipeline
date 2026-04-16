@@ -37,22 +37,22 @@ def parse_args() -> argparse.Namespace:
     )
     parser.add_argument(
         "--topic_share_path",
-        default="bert/artifacts/broad_analysis/topic_model/topic_share_by_period_and_keyword.csv",
+        default="bert/artifacts/broad_analysis/topic_model_BAAI/topic_share_by_period_and_keyword.csv",
         help="Path to keyword-by-period topic share output.",
     )
     parser.add_argument(
         "--overall_topic_share_path",
-        default="bert/artifacts/broad_analysis/topic_model/topic_share_by_period.csv",
+        default="bert/artifacts/broad_analysis/topic_model_BAAI/topic_share_by_period.csv",
         help="Path to overall topic-share output.",
     )
     parser.add_argument(
         "--topic_share_by_period_and_ip_path",
-        default="bert/artifacts/broad_analysis/topic_model/topic_share_by_period_and_ip.csv",
+        default="bert/artifacts/broad_analysis/topic_model_BAAI/topic_share_by_period_and_ip.csv",
         help="Path to IP-by-period topic share output.",
     )
     parser.add_argument(
         "--topic_share_by_period_and_ip_and_keyword_path",
-        default="bert/artifacts/broad_analysis/topic_model/topic_share_by_period_and_ip_and_keyword.csv",
+        default="bert/artifacts/broad_analysis/topic_model_BAAI/topic_share_by_period_and_ip_and_keyword.csv",
         help="Path to keyword + IP + period topic share output.",
     )
     parser.add_argument(
