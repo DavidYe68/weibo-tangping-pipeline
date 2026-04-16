@@ -55,6 +55,12 @@ Windows:
 .\.venv\Scripts\python.exe bert/06_predict_bert_classifier.py --help
 ```
 
+## Uncertain decisions
+
+- If requirements, implementation details, tradeoffs, or ambiguous instructions are uncertain, do not decide silently.
+- Present the user with clear options and brief implications for each option, then let the user choose.
+- If one option looks best, mark it as the recommended option, but still wait for the user's decision before proceeding when the uncertainty could materially affect behavior or outputs.
+
 ## Project notes
 
 - Main pipeline entry: `main.py`

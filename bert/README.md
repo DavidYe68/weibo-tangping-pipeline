@@ -485,9 +485,14 @@ cp bert/llm_label_local.example.toml bert/llm_label_local.toml
 
 作用：
 
-- 直接读取 `08` 产出的 topic share CSV，生成中期汇报常用的交互式 HTML 图
-- 同时补上 `主题 x 关键词画像`、`主题时间演化`、`省份热力图` 三类可视化
-- 不额外依赖 `matplotlib / pyecharts / geopandas`，只需要已有的 `pandas`
+- 直接读取 `08` 产出的 BERTopic 结果，生成唯一的主题可视化入口
+- 以中期展示为目标，把主题规模、关键词对应关系、时间演化、主题解释和附录页打成一套 bundle
+- 同时输出 dashboard、附图页和表格，不再拆成 `11` / `12` 两套脚本
+
+适用场景：
+
+- 现在只保留 `11` 这一个入口。
+- 如果你要讲“BERTopic 聚出了什么、三个关键词分别落到哪些主题、主题如何随时间变化”，直接跑 `11` 就行。
 
 默认命令：
 
@@ -499,21 +504,33 @@ cp bert/llm_label_local.example.toml bert/llm_label_local.toml
 
 ```bash
 .venv/bin/python bert/11_visualize_topic_outputs.py \
-  --top_n_topics 10 \
-  --map_top_n_topics 12
+  --top_n_topics 20 \
+  --wordcloud_top_n_topics 12 \
+  --top_n_terms 15 \
+  --min_period_docs 1000 \
+  --coding_template_top_n 80
 ```
 
 重点输出：
 
-- `bert/artifacts/broad_analysis/topic_visuals/topic_keyword_profiles.html`
-- `bert/artifacts/broad_analysis/topic_visuals/topic_time_evolution.html`
-- `bert/artifacts/broad_analysis/topic_visuals/topic_ip_heatmap.html`
-- `bert/artifacts/broad_analysis/topic_visuals/topic_keyword_profile_overall.csv`
-- `bert/artifacts/broad_analysis/topic_visuals/topic_keyword_profile_latest.csv`
-- `bert/artifacts/broad_analysis/topic_visuals/topic_visualization_summary.json`
+- `bert/artifacts/broad_analysis/topic_visualization/topic_midterm_dashboard.html`
+- `bert/artifacts/broad_analysis/topic_visualization/html/topic_prevalence.html`
+- `bert/artifacts/broad_analysis/topic_visualization/html/topic_keyword_alignment.html`
+- `bert/artifacts/broad_analysis/topic_visualization/html/topic_term_detail.html`
+- `bert/artifacts/broad_analysis/topic_visualization/html/topic_evolution_heatmap.html`
+- `bert/artifacts/broad_analysis/topic_visualization/html/topic_wordclouds_appendix.html`
+- `bert/artifacts/broad_analysis/topic_visualization/tables/topic_overview_table.csv`
+- `bert/artifacts/broad_analysis/topic_visualization/tables/keyword_topic_matrix.csv`
+- `bert/artifacts/broad_analysis/topic_visualization/tables/topic_coding_template.csv`
+- `bert/artifacts/broad_analysis/topic_visualization/topic_visualization_summary.json`
 
 补充：
 
+- `topic_midterm_dashboard.html` 适合直接拿去做中期展示，先讲 topic 结构，再讲研究关键词如何被不同主题吸附。
+- `topic_keyword_alignment.html` 专门回答“躺平 / 摆烂 / 佛系”分别主要落在哪些 topic 上。
+- `topic_term_detail.html` 会同时给 term weight 和 representative docs，适合做语义校验。
+- `topic_wordclouds_appendix.html` 更偏直观展示，建议放在附录，不替代主展示里的 term weight 条形图。
+- `topic_coding_template.csv` 预留了人工分组、相关性和噪音标记列，适合 topic 归并和清洗。
 - 图表使用 ECharts CDN 资源，打开 HTML 时需要能访问对应脚本地址。
 - 如果你已经在 `topic_info.csv` 里补了 `topic_label_zh`，图里会优先使用人工中文标签；否则会回退到 `topic_terms.csv` 的前三个词。
 

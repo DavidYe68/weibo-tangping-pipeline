@@ -532,6 +532,121 @@ def fit_topic_model_with_precomputed_reduction(
     return documents.Topic.to_list(), topic_model.probabilities_
 
 
+def clean_optional_text(value: object) -> str:
+    if value is None or pd.isna(value):
+        return ""
+    return str(value).strip()
+
+
+def build_topic_overview_table(
+    topic_info: pd.DataFrame,
+    topic_terms_df: pd.DataFrame,
+    share_by_period: pd.DataFrame,
+    share_by_period_and_keyword: pd.DataFrame,
+    *,
+    keyword_col: str,
+    total_document_count: int,
+) -> pd.DataFrame:
+    info = topic_info.copy()
+    info["Topic"] = pd.to_numeric(info["Topic"], errors="coerce").astype("Int64")
+    info["Count"] = pd.to_numeric(info["Count"], errors="coerce").fillna(0).astype(int)
+
+    clustered_document_count = int(info.loc[info["Topic"] >= 0, "Count"].sum())
+
+    top_terms_lookup: dict[int, list[str]] = {}
+    if not topic_terms_df.empty and {"topic_id", "term_rank", "term"}.issubset(topic_terms_df.columns):
+        working_terms = topic_terms_df.copy()
+        working_terms["topic_id"] = pd.to_numeric(working_terms["topic_id"], errors="coerce").astype("Int64")
+        working_terms["term_rank"] = pd.to_numeric(working_terms["term_rank"], errors="coerce")
+        working_terms = working_terms.dropna(subset=["topic_id", "term_rank", "term"]).copy()
+        working_terms = working_terms.sort_values(["topic_id", "term_rank"])
+        for topic_id, frame in working_terms.groupby("topic_id"):
+            top_terms_lookup[int(topic_id)] = [
+                clean_optional_text(term) for term in frame["term"].tolist() if clean_optional_text(term)
+            ]
+
+    peak_period_lookup: dict[int, dict[str, object]] = {}
+    if not share_by_period.empty:
+        working_period = share_by_period.copy()
+        working_period["topic_id"] = pd.to_numeric(working_period["topic_id"], errors="coerce").astype("Int64")
+        working_period["doc_count"] = pd.to_numeric(working_period["doc_count"], errors="coerce").fillna(0).astype(int)
+        working_period["doc_share"] = pd.to_numeric(working_period["doc_share"], errors="coerce").fillna(0.0)
+        working_period["period_label"] = working_period["period_label"].astype("string")
+        working_period = working_period.dropna(subset=["topic_id"]).copy()
+        working_period = working_period.sort_values(
+            ["topic_id", "doc_count", "doc_share", "period_label"],
+            ascending=[True, False, False, True],
+        )
+        for topic_id, frame in working_period.groupby("topic_id"):
+            best_row = frame.iloc[0]
+            peak_period_lookup[int(topic_id)] = {
+                "peak_period": clean_optional_text(best_row.get("period_label")),
+                "peak_doc_count": int(best_row.get("doc_count", 0)),
+                "peak_doc_share_pct": float(best_row.get("doc_share", 0.0)) * 100.0,
+            }
+
+    dominant_keyword_lookup: dict[int, dict[str, object]] = {}
+    if not share_by_period_and_keyword.empty and keyword_col in share_by_period_and_keyword.columns:
+        working_keyword = share_by_period_and_keyword.copy()
+        working_keyword["topic_id"] = pd.to_numeric(working_keyword["topic_id"], errors="coerce").astype("Int64")
+        working_keyword["doc_count"] = pd.to_numeric(working_keyword["doc_count"], errors="coerce").fillna(0).astype(int)
+        grouped_keyword = (
+            working_keyword.dropna(subset=["topic_id"])
+            .groupby(["topic_id", keyword_col], as_index=False)["doc_count"]
+            .sum()
+            .sort_values(["topic_id", "doc_count", keyword_col], ascending=[True, False, True])
+        )
+        for topic_id, frame in grouped_keyword.groupby("topic_id"):
+            best_row = frame.iloc[0]
+            dominant_keyword_lookup[int(topic_id)] = {
+                "dominant_keyword": clean_optional_text(best_row.get(keyword_col)),
+                "dominant_keyword_doc_count": int(best_row.get("doc_count", 0)),
+            }
+
+    rows: list[dict[str, object]] = []
+    for row in info.itertuples(index=False):
+        if pd.isna(row.Topic):
+            continue
+        topic_id = int(row.Topic)
+        if topic_id < 0:
+            continue
+
+        topic_count = int(row.Count)
+        label_machine = clean_optional_text(getattr(row, "topic_label_machine", "")) or clean_optional_text(
+            getattr(row, "Name", "")
+        )
+        label_zh = clean_optional_text(getattr(row, "topic_label_zh", ""))
+        peak = peak_period_lookup.get(topic_id, {})
+        dominant_keyword = dominant_keyword_lookup.get(topic_id, {})
+        dominant_keyword_doc_count = int(dominant_keyword.get("dominant_keyword_doc_count", 0))
+
+        rows.append(
+            {
+                "topic_id": topic_id,
+                "topic_name_raw": clean_optional_text(getattr(row, "Name", "")),
+                "topic_label_machine": label_machine,
+                "topic_label_zh": label_zh,
+                "topic_label_display": label_zh or label_machine or f"Topic {topic_id}",
+                "topic_count": topic_count,
+                "share_of_all_docs_pct": (100.0 * topic_count / total_document_count) if total_document_count else 0.0,
+                "share_of_clustered_docs_pct": (100.0 * topic_count / clustered_document_count)
+                if clustered_document_count
+                else 0.0,
+                "top_terms": " / ".join(top_terms_lookup.get(topic_id, [])[:10]),
+                "peak_period": clean_optional_text(peak.get("peak_period")),
+                "peak_doc_count": int(peak.get("peak_doc_count", 0)),
+                "peak_doc_share_pct": float(peak.get("peak_doc_share_pct", 0.0)),
+                "dominant_keyword": clean_optional_text(dominant_keyword.get("dominant_keyword")),
+                "dominant_keyword_doc_count": dominant_keyword_doc_count,
+                "dominant_keyword_share_within_topic_pct": (100.0 * dominant_keyword_doc_count / topic_count)
+                if topic_count
+                else 0.0,
+            }
+        )
+
+    return pd.DataFrame(rows).sort_values(["topic_count", "topic_id"], ascending=[False, True]).reset_index(drop=True)
+
+
 def main() -> None:
     args = parse_args()
     emit = resolve_emit("bertopic", None)
@@ -871,10 +986,19 @@ def main() -> None:
     share_by_ip_path = output_dir / "topic_share_by_ip.csv"
     share_by_period_ip_path = output_dir / "topic_share_by_period_and_ip.csv"
     share_by_period_ip_keyword_path = output_dir / "topic_share_by_period_and_ip_and_keyword.csv"
+    topic_overview_path = output_dir / "topic_overview.csv"
     summary_path = output_dir / "topic_model_summary.json"
 
     save_start = time.perf_counter()
     emit(f"Saving outputs under {output_dir}")
+    topic_overview_df = build_topic_overview_table(
+        topic_info,
+        topic_terms_df,
+        share_by_period,
+        share_by_period_and_keyword,
+        keyword_col=args.keyword_col,
+        total_document_count=len(doc_topics),
+    )
     save_dataframe(doc_topics, documents_path)
     save_dataframe(topic_info, topic_info_path)
     save_dataframe(topic_terms_df, topic_terms_path)
@@ -883,17 +1007,23 @@ def main() -> None:
     save_dataframe(share_by_ip, share_by_ip_path)
     save_dataframe(share_by_period_and_ip, share_by_period_ip_path)
     save_dataframe(share_by_period_ip_keyword, share_by_period_ip_keyword_path)
+    save_dataframe(topic_overview_df, topic_overview_path)
 
     if args.save_model:
         emit("Saving BERTopic model")
         topic_model.save(output_dir / "model", save_embedding_model=args.embedding_model)
 
+    outlier_document_count = int(topic_info.loc[pd.to_numeric(topic_info["Topic"], errors="coerce") == -1, "Count"].sum())
+    clustered_document_count = int(len(doc_topics) - outlier_document_count)
     summary = {
         "input_path": args.input_path,
         "output_dir": str(output_dir.resolve()),
         "checkpoint_dir": str(checkpoint_dir.resolve()),
         "selected_keywords": selected_keywords,
         "document_count": int(len(doc_topics)),
+        "clustered_document_count": clustered_document_count,
+        "outlier_document_count": outlier_document_count,
+        "outlier_share": float(outlier_document_count / len(doc_topics)) if len(doc_topics) > 0 else 0.0,
         "topic_count_excluding_outliers": int((topic_info["Topic"] >= 0).sum()),
         "embedding_device": embedding_device,
         "embedding_model": args.embedding_model,
@@ -925,6 +1055,7 @@ def main() -> None:
         "topic_share_by_ip_path": str(share_by_ip_path.resolve()),
         "topic_share_by_period_and_ip_path": str(share_by_period_ip_path.resolve()),
         "topic_share_by_period_and_ip_and_keyword_path": str(share_by_period_ip_keyword_path.resolve()),
+        "topic_overview_path": str(topic_overview_path.resolve()),
     }
     save_json(summary_path, summary)
     emit(f"Saved outputs in {format_elapsed(save_start)}")
