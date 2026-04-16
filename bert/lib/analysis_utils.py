@@ -249,7 +249,7 @@ def sort_period_labels(labels: Iterable[str], granularity: str) -> list[str]:
     if freq is None:
         raise ValueError(f"Unsupported time granularity: {granularity}")
 
-    valid = [label for label in labels if label and label != "NA"]
+    valid = sorted({label for label in labels if label and label != "NA"})
     parsed = pd.PeriodIndex(valid, freq=freq)
     ordered = [str(period) for period in parsed.sort_values()]
     if any(label == "NA" for label in labels):

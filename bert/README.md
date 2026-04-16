@@ -284,7 +284,8 @@ bert/
 - 在 `07` 生成的分析底表上做 BERTopic
 - 输出文档级 topic 结果、topic 词表，以及 `topic / 时间 / IP` 三个维度的占比表
 - 缺失 IP 不会被丢掉，而是作为 `UNKNOWN_IP` 单独保留
-- 支持 embedding 断点续跑，避免中途打断后从头编码
+- 支持 embedding 和 UMAP 降维结果断点续跑，避免中途打断后从头编码或重跑降维
+- 默认启用 `multilingual + jieba` 的中文主题提词，避免 topic 标签被英文/代码碎片主导
 
 默认命令：
 
@@ -308,9 +309,16 @@ bert/
 
 - `--device auto|cpu|cuda|mps`：控制 sentence-transformers 的编码设备
 - `--embedding_model`：指定模型名或本地目录
+- `--topic_language multilingual|english`：BERTopic 的语言模式；中文语料建议保持默认 `multilingual`
+- `--topic_tokenizer jieba|default`：topic 提词的分词方式；默认 `jieba`
+- `--topic_stopwords_path`：自定义 topic 提词停用词表（UTF-8 文本，每行一个）
+- `--topic_token_min_length`：`jieba` 提词时保留的最短 token 长度，默认 `2`
 - `--local_files_only`：只从本地加载 embedding 资源
-- `--resume`：如果已有 embedding checkpoint，则直接续跑
+- `--calculate_probabilities`：显式计算“每篇文档 x 全部 topic”的完整概率矩阵；非常吃内存，默认关闭
+- `--resume`：如果已有 embedding / UMAP checkpoint，则尽量从 checkpoint 继续
 - `--checkpoint_dir`：自定义 checkpoint 目录
+- `--umap_low_memory / --no-umap_low_memory`：控制 UMAP 低内存模式，默认开启
+- `--hdbscan_core_dist_n_jobs`：控制 HDBSCAN 并行度；更小的值更省内存
 - `--ip_col`：手动指定 IP 列名
 
 重点输出：

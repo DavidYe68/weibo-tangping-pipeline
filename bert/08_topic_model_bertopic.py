@@ -2,12 +2,17 @@
 from __future__ import annotations
 
 import argparse
+import gc
 import hashlib
+import json
+import pickle
+import re
 import time
 from pathlib import Path
 
 import numpy as np
 import pandas as pd
+from sklearn.feature_extraction.text import CountVectorizer
 
 from lib.analysis_utils import (
     DEFAULT_ANALYSIS_KEYWORDS,
@@ -23,6 +28,102 @@ from lib.analysis_utils import (
     sort_period_labels,
 )
 from lib.io_utils import save_json
+
+DEFAULT_TOPIC_STOPWORDS = {
+    "我们",
+    "你们",
+    "他们",
+    "就是",
+    "一个",
+    "没有",
+    "这个",
+    "那个",
+    "真的",
+    "自己",
+    "现在",
+    "因为",
+    "但是",
+    "还是",
+    "已经",
+    "非常",
+    "有点",
+    "一下",
+    "一下子",
+    "感觉",
+    "觉得",
+    "时候",
+    "大家",
+    "可以",
+    "不是",
+    "如果",
+    "什么",
+    "怎么",
+    "为什么",
+    "而且",
+    "然后",
+    "还有",
+    "一个人",
+}
+TOPIC_TOKEN_RE = re.compile(r"[\u4e00-\u9fffA-Za-z0-9_]+")
+TOPIC_SEGMENT_RE = re.compile(r"[A-Za-z0-9_]+|[\u4e00-\u9fff]+")
+
+
+class ChineseTopicTokenizer:
+    def __init__(self, *, stopwords: set[str], token_min_length: int, prefer_jieba: bool = True) -> None:
+        self.stopwords = frozenset(stopwords)
+        self.token_min_length = int(token_min_length)
+        self.prefer_jieba = bool(prefer_jieba)
+
+    def _normalize_token(self, candidate: str) -> str | None:
+        normalized = candidate.strip().lower()
+        if not normalized:
+            return None
+        if normalized in self.stopwords:
+            return None
+        if len(normalized) < self.token_min_length:
+            return None
+        if not TOPIC_TOKEN_RE.fullmatch(normalized):
+            return None
+        return normalized
+
+    def _fallback_tokenize(self, text: str) -> list[str]:
+        tokens: list[str] = []
+        for chunk in TOPIC_SEGMENT_RE.findall(text):
+            if not chunk:
+                continue
+            if chunk.isascii():
+                normalized = self._normalize_token(chunk)
+                if normalized:
+                    tokens.append(normalized)
+                continue
+
+            if len(chunk) <= 4:
+                normalized = self._normalize_token(chunk)
+                if normalized:
+                    tokens.append(normalized)
+                continue
+
+            for index in range(len(chunk) - 1):
+                normalized = self._normalize_token(chunk[index : index + 2])
+                if normalized:
+                    tokens.append(normalized)
+        return tokens
+
+    def __call__(self, text: str) -> list[str]:
+        if self.prefer_jieba:
+            try:
+                import jieba
+            except ImportError:
+                pass
+            else:
+                tokens: list[str] = []
+                for token in jieba.lcut(text, cut_all=False):
+                    normalized = self._normalize_token(token)
+                    if normalized:
+                        tokens.append(normalized)
+                return tokens
+
+        return self._fallback_tokenize(text)
 
 
 def parse_nr_topics(value: str) -> int | str:
@@ -69,6 +170,27 @@ def missing_dependency_message(package_name: str) -> str:
     )
 
 
+def load_stopwords(path: str | None) -> set[str]:
+    stopwords = set(DEFAULT_TOPIC_STOPWORDS)
+    if not path:
+        return stopwords
+
+    content = Path(path).read_text(encoding="utf-8")
+    for line in content.splitlines():
+        normalized = line.strip()
+        if normalized:
+            stopwords.add(normalized)
+    return stopwords
+
+
+def has_jieba() -> bool:
+    try:
+        import jieba  # noqa: F401
+    except ImportError:
+        return False
+    return True
+
+
 def sort_ip_labels(labels: list[str]) -> list[str]:
     unique = sorted({str(label) for label in labels if label is not None and str(label) != ""})
     if MISSING_IP_LABEL in unique:
@@ -90,6 +212,15 @@ def compute_document_fingerprint(
     frame = frame.fillna("").astype("string")
     row_hashes = pd.util.hash_pandas_object(frame, index=False)
     return hashlib.sha256(row_hashes.to_numpy().tobytes()).hexdigest()
+
+
+def load_checkpoint_manifest(path: Path) -> dict:
+    if not path.exists():
+        return {}
+    try:
+        return json.loads(path.read_text(encoding="utf-8"))
+    except Exception as exc:
+        raise ValueError(f"Failed to read checkpoint manifest: {path}") from exc
 
 
 def parse_args() -> argparse.Namespace:
@@ -137,6 +268,29 @@ def parse_args() -> argparse.Namespace:
         help="SentenceTransformer model name or local path.",
     )
     parser.add_argument(
+        "--topic_language",
+        choices=["multilingual", "english"],
+        default="multilingual",
+        help="BERTopic language setting used during text preprocessing and topic representation.",
+    )
+    parser.add_argument(
+        "--topic_tokenizer",
+        choices=["jieba", "default"],
+        default="jieba",
+        help="Tokenizer backend for topic term extraction. Defaults to jieba for Chinese text.",
+    )
+    parser.add_argument(
+        "--topic_stopwords_path",
+        default=None,
+        help="Optional UTF-8 text file with one stopword per line for topic term extraction.",
+    )
+    parser.add_argument(
+        "--topic_token_min_length",
+        type=int,
+        default=2,
+        help="Minimum token length kept by the jieba topic tokenizer.",
+    )
+    parser.add_argument(
         "--local_files_only",
         action="store_true",
         help="Only load embedding artifacts from local files.",
@@ -159,9 +313,30 @@ def parse_args() -> argparse.Namespace:
         help="Show UMAP progress logs during BERTopic dimensionality reduction.",
     )
     parser.add_argument(
+        "--umap_low_memory",
+        action=argparse.BooleanOptionalAction,
+        default=True,
+        help="Use UMAP low-memory mode. Recommended for large corpora.",
+    )
+    parser.add_argument(
+        "--calculate_probabilities",
+        action=argparse.BooleanOptionalAction,
+        default=False,
+        help=(
+            "Calculate full topic-probability vectors for every document. "
+            "This is much more memory-intensive than assigned-topic probabilities."
+        ),
+    )
+    parser.add_argument(
+        "--hdbscan_core_dist_n_jobs",
+        type=int,
+        default=1,
+        help="Number of parallel jobs for HDBSCAN core-distance calculations. Lower values use less memory.",
+    )
+    parser.add_argument(
         "--resume",
         action="store_true",
-        help="Resume from checkpointed embeddings if available.",
+        help="Resume from checkpointed embeddings and dimensionality-reduction outputs if available.",
     )
     parser.add_argument(
         "--checkpoint_dir",
@@ -200,9 +375,34 @@ def load_sentence_encoder(args: argparse.Namespace, *, emit):
     return encoder, actual_device
 
 
+def build_topic_vectorizer(args: argparse.Namespace, *, emit):
+    if args.topic_tokenizer == "default":
+        emit("Using default CountVectorizer tokenization for topic term extraction")
+        return None
+
+    stopwords = load_stopwords(args.topic_stopwords_path)
+    jieba_available = has_jieba()
+    emit(
+        "Using Chinese CountVectorizer tokenization for topic term extraction "
+        f"(backend={'jieba' if jieba_available else 'fallback_cjk'}, "
+        f"stopwords={len(stopwords)}, token_min_length={args.topic_token_min_length})"
+    )
+    return CountVectorizer(
+        tokenizer=ChineseTopicTokenizer(
+            stopwords=stopwords,
+            token_min_length=args.topic_token_min_length,
+            prefer_jieba=jieba_available,
+        ),
+        token_pattern=None,
+        lowercase=False,
+    )
+
+
 def build_bertopic_model(args: argparse.Namespace, *, embedding_model, emit):
     BERTopic = load_bertopic_class()
     umap_model = None
+    hdbscan_model = None
+    vectorizer_model = build_topic_vectorizer(args, emit=emit)
     try:
         from umap import UMAP
     except ImportError:
@@ -213,28 +413,160 @@ def build_bertopic_model(args: argparse.Namespace, *, embedding_model, emit):
             n_components=5,
             min_dist=0.0,
             metric="cosine",
-            low_memory=False,
+            low_memory=args.umap_low_memory,
+            random_state=args.seed,
             verbose=args.umap_verbose,
         )
         emit(
             "Using explicit UMAP reducer "
             f"(n_neighbors=15, n_components=5, min_dist=0.0, metric=cosine, "
-            f"low_memory=False, verbose={args.umap_verbose})"
+            f"low_memory={args.umap_low_memory}, random_state={args.seed}, verbose={args.umap_verbose})"
+        )
+    try:
+        from hdbscan import HDBSCAN
+    except ImportError:
+        emit("hdbscan is not installed; BERTopic will fall back to its default clusterer.")
+    else:
+        hdbscan_model = HDBSCAN(
+            min_cluster_size=args.min_topic_size,
+            metric="euclidean",
+            cluster_selection_method="eom",
+            core_dist_n_jobs=args.hdbscan_core_dist_n_jobs,
+            prediction_data=args.calculate_probabilities,
+        )
+        emit(
+            "Using explicit HDBSCAN clusterer "
+            f"(min_cluster_size={args.min_topic_size}, metric=euclidean, "
+            f"cluster_selection_method=eom, core_dist_n_jobs={args.hdbscan_core_dist_n_jobs}, "
+            f"prediction_data={args.calculate_probabilities})"
         )
     topic_model = BERTopic(
+        language=args.topic_language,
         embedding_model=embedding_model,
         umap_model=umap_model,
+        hdbscan_model=hdbscan_model,
+        vectorizer_model=vectorizer_model,
         min_topic_size=args.min_topic_size,
         top_n_words=args.top_n_words,
         nr_topics=args.nr_topics,
-        calculate_probabilities=True,
+        low_memory=args.umap_low_memory,
+        calculate_probabilities=args.calculate_probabilities,
         verbose=True,
     )
     emit(
         "BERTopic model initialized "
-        f"(min_topic_size={args.min_topic_size}, top_n_words={args.top_n_words}, nr_topics={args.nr_topics})"
+        f"(language={args.topic_language}, topic_tokenizer={args.topic_tokenizer}, "
+        f"min_topic_size={args.min_topic_size}, top_n_words={args.top_n_words}, "
+        f"nr_topics={args.nr_topics}, calculate_probabilities={args.calculate_probabilities})"
     )
     return topic_model
+
+
+def build_reducer_signature(topic_model, args: argparse.Namespace) -> dict[str, object]:
+    reducer_name = type(topic_model.umap_model).__name__ if topic_model.umap_model is not None else "None"
+    signature: dict[str, object] = {"reducer_class": reducer_name}
+    if reducer_name == "UMAP":
+        signature.update(
+            {
+                "n_neighbors": 15,
+                "n_components": 5,
+                "min_dist": 0.0,
+                "metric": "cosine",
+                "low_memory": bool(args.umap_low_memory),
+                "seed": int(args.seed),
+            }
+        )
+    return signature
+
+
+def reduce_embeddings_with_checkpoint(
+    topic_model,
+    *,
+    args: argparse.Namespace,
+    embeddings: np.ndarray,
+    checkpoint_dir: Path,
+    manifest: dict,
+    current_fingerprint: str,
+    emit,
+) -> tuple[np.ndarray, Path, Path, bool]:
+    reduced_embeddings_checkpoint_path = checkpoint_dir / "reduced_embeddings.npy"
+    reducer_model_checkpoint_path = checkpoint_dir / "dimensionality_reduction_model.pkl"
+    reducer_signature = build_reducer_signature(topic_model, args)
+
+    can_resume_reducer = (
+        args.resume
+        and reduced_embeddings_checkpoint_path.exists()
+        and reducer_model_checkpoint_path.exists()
+        and manifest.get("document_fingerprint") == current_fingerprint
+        and manifest.get("reducer_signature") == reducer_signature
+    )
+
+    if can_resume_reducer:
+        emit(f"Resuming from dimensionality-reduction checkpoint: {reduced_embeddings_checkpoint_path}")
+        reduce_start = time.perf_counter()
+        reduced_embeddings = np.load(reduced_embeddings_checkpoint_path)
+        if reduced_embeddings.shape[0] != embeddings.shape[0]:
+            raise ValueError(
+                "Dimensionality-reduction checkpoint row count does not match the filtered dataset. "
+                "Delete the checkpoint or rerun without --resume."
+            )
+        try:
+            with reducer_model_checkpoint_path.open("rb") as handle:
+                topic_model.umap_model = pickle.load(handle)
+        except Exception as exc:
+            raise ValueError(
+                f"Failed to load dimensionality-reduction model checkpoint: {reducer_model_checkpoint_path}"
+            ) from exc
+        emit(
+            "Loaded dimensionality-reduction checkpoint in "
+            f"{format_elapsed(reduce_start)}"
+        )
+        return reduced_embeddings, reduced_embeddings_checkpoint_path, reducer_model_checkpoint_path, True
+
+    reduce_start = time.perf_counter()
+    emit(f"Reducing {embeddings.shape[0]} embeddings before clustering")
+    reduced_embeddings = topic_model._reduce_dimensionality(embeddings, y=None)
+    np.save(reduced_embeddings_checkpoint_path, reduced_embeddings)
+    with reducer_model_checkpoint_path.open("wb") as handle:
+        pickle.dump(topic_model.umap_model, handle, protocol=pickle.HIGHEST_PROTOCOL)
+    emit(
+        "Dimensionality reduction finished in "
+        f"{format_elapsed(reduce_start)} and checkpointed to {reduced_embeddings_checkpoint_path}"
+    )
+    return reduced_embeddings, reduced_embeddings_checkpoint_path, reducer_model_checkpoint_path, False
+
+
+def fit_topic_model_with_precomputed_reduction(
+    topic_model,
+    *,
+    texts: list[str],
+    embeddings: np.ndarray,
+    reduced_embeddings: np.ndarray,
+):
+    documents = pd.DataFrame(
+        {
+            "Document": texts,
+            "ID": range(len(texts)),
+            "Topic": None,
+            "Image": None,
+        }
+    )
+
+    documents, probabilities = topic_model._cluster_embeddings(reduced_embeddings, documents, y=None)
+    if not topic_model.nr_topics:
+        documents = topic_model._sort_mappings_by_frequency(documents)
+
+    topic_model._extract_topics(
+        documents,
+        embeddings=embeddings,
+        verbose=topic_model.verbose,
+        fine_tune_representation=not topic_model.nr_topics,
+    )
+    if topic_model.nr_topics:
+        documents = topic_model._reduce_topics(documents)
+    topic_model._save_representative_docs(documents)
+    topic_model.probabilities_ = topic_model._map_probabilities(probabilities, original_topics=True)
+    return documents.Topic.to_list(), topic_model.probabilities_
 
 
 def main() -> None:
@@ -249,6 +581,8 @@ def main() -> None:
     filtered_checkpoint_path = checkpoint_dir / "filtered_documents.parquet"
     embeddings_checkpoint_path = checkpoint_dir / "document_embeddings.npy"
     checkpoint_manifest_path = checkpoint_dir / "checkpoint_manifest.json"
+    reduced_embeddings_checkpoint_path = checkpoint_dir / "reduced_embeddings.npy"
+    reducer_model_checkpoint_path = checkpoint_dir / "dimensionality_reduction_model.pkl"
 
     emit(f"Loading analysis base from {args.input_path}")
     load_start = time.perf_counter()
@@ -269,6 +603,8 @@ def main() -> None:
     )
 
     filtered = df[df[args.keyword_col].isin(selected_keywords)].copy()
+    del df
+    gc.collect()
     filtered[args.text_col] = filtered[args.text_col].fillna("").astype("string").str.strip()
     filtered = filtered[filtered[args.text_col].ne("")].reset_index(drop=True)
     if filtered.empty:
@@ -290,6 +626,7 @@ def main() -> None:
         keyword_col=args.keyword_col,
         time_col=args.time_col,
     )
+    manifest = load_checkpoint_manifest(checkpoint_manifest_path)
 
     texts = filtered[args.text_col].tolist()
     encoder = None
@@ -298,14 +635,6 @@ def main() -> None:
 
     if args.resume and embeddings_checkpoint_path.exists() and checkpoint_manifest_path.exists():
         emit(f"Resuming from embedding checkpoint: {embeddings_checkpoint_path}")
-        manifest = {}
-        try:
-            import json
-
-            manifest = json.loads(checkpoint_manifest_path.read_text(encoding="utf-8"))
-        except Exception as exc:
-            raise ValueError(f"Failed to read checkpoint manifest: {checkpoint_manifest_path}") from exc
-
         checkpoint_fingerprint = manifest.get("document_fingerprint")
         if checkpoint_fingerprint != current_fingerprint:
             raise ValueError(
@@ -313,7 +642,7 @@ def main() -> None:
                 "Delete the checkpoint directory or rerun without --resume."
             )
         embedding_start = time.perf_counter()
-        embeddings = np.load(embeddings_checkpoint_path)
+        embeddings = np.load(embeddings_checkpoint_path, mmap_mode="r")
         if embeddings.shape[0] != len(texts):
             raise ValueError(
                 "Embedding checkpoint row count does not match the filtered dataset. "
@@ -341,7 +670,11 @@ def main() -> None:
             "Embedding encoding finished in "
             f"{format_elapsed(embedding_start)} and checkpointed to {embeddings_checkpoint_path}"
         )
+        encoder = None
+        gc.collect()
 
+    topic_model = build_bertopic_model(args, embedding_model=None, emit=emit)
+    reducer_signature = build_reducer_signature(topic_model, args)
     save_dataframe(filtered, filtered_checkpoint_path)
     save_json(
         checkpoint_manifest_path,
@@ -351,24 +684,52 @@ def main() -> None:
             "text_col": args.text_col,
             "keyword_col": args.keyword_col,
             "time_col": args.time_col,
+            "reducer_signature": reducer_signature,
+            "embeddings_checkpoint_path": str(embeddings_checkpoint_path.resolve()),
+            "reduced_embeddings_checkpoint_path": str(reduced_embeddings_checkpoint_path.resolve()),
+            "reducer_model_checkpoint_path": str(reducer_model_checkpoint_path.resolve()),
         },
     )
+    manifest = load_checkpoint_manifest(checkpoint_manifest_path)
     emit(f"Checkpointed filtered documents to {filtered_checkpoint_path}")
 
     fit_start = time.perf_counter()
-    topic_model = build_bertopic_model(args, embedding_model=encoder, emit=emit)
-    emit(
-        f"Starting BERTopic fit_transform on {len(texts)} documents "
-        f"(embedding_device={embedding_device})"
+    reduced_embeddings, reduced_embeddings_checkpoint_path, reducer_model_checkpoint_path, used_reducer_checkpoint = (
+        reduce_embeddings_with_checkpoint(
+            topic_model,
+            args=args,
+            embeddings=embeddings,
+            checkpoint_dir=checkpoint_dir,
+            manifest=manifest,
+            current_fingerprint=current_fingerprint,
+            emit=emit,
+        )
     )
-    topics, probabilities = topic_model.fit_transform(texts, embeddings=embeddings)
-    emit(f"BERTopic fit_transform finished in {format_elapsed(fit_start)}")
+    if used_reducer_checkpoint:
+        emit(
+            f"Skipping dimensionality reduction and resuming BERTopic from clustering "
+            f"(embedding_device={embedding_device})"
+        )
+    else:
+        emit(
+            f"Starting BERTopic clustering and topic extraction on {len(texts)} documents "
+            f"(embedding_device={embedding_device})"
+        )
+    topics, probabilities = fit_topic_model_with_precomputed_reduction(
+        topic_model,
+        texts=texts,
+        embeddings=embeddings,
+        reduced_embeddings=reduced_embeddings,
+    )
+    emit(f"BERTopic pipeline finished in {format_elapsed(fit_start)}")
 
     postprocess_start = time.perf_counter()
     emit("Post-processing topic assignments")
     doc_topics = filtered.copy()
     doc_topics["topic_id"] = topics
-    if probabilities is not None:
+    if probabilities is not None and getattr(probabilities, "ndim", 1) == 1:
+        doc_topics["topic_probability"] = pd.Series(probabilities, copy=False).astype(float)
+    elif probabilities is not None:
         topic_probabilities = []
         for row_index, topic_id in enumerate(topics):
             if topic_id < 0:
@@ -544,7 +905,7 @@ def main() -> None:
 
     if args.save_model:
         emit("Saving BERTopic model")
-        topic_model.save(output_dir / "model")
+        topic_model.save(output_dir / "model", save_embedding_model=args.embedding_model)
 
     summary = {
         "input_path": args.input_path,
@@ -555,11 +916,21 @@ def main() -> None:
         "topic_count_excluding_outliers": int((topic_info["Topic"] >= 0).sum()),
         "embedding_device": embedding_device,
         "embedding_model": args.embedding_model,
+        "topic_language": args.topic_language,
+        "topic_tokenizer": args.topic_tokenizer,
+        "topic_stopwords_path": args.topic_stopwords_path,
+        "topic_token_min_length": int(args.topic_token_min_length),
+        "calculate_probabilities": bool(args.calculate_probabilities),
+        "umap_low_memory": bool(args.umap_low_memory),
+        "hdbscan_core_dist_n_jobs": int(args.hdbscan_core_dist_n_jobs),
+        "reducer_signature": reducer_signature,
         "resolved_ip_col": resolved_ip_col,
         "unique_ip_count_excluding_missing": int(doc_topics.loc[~doc_topics["ip_missing"], "ip_normalized"].nunique()),
         "missing_ip_document_count": int(doc_topics["ip_missing"].sum()),
         "missing_ip_rate": float(doc_topics["ip_missing"].mean()) if len(doc_topics) > 0 else 0.0,
         "embeddings_checkpoint_path": str(embeddings_checkpoint_path.resolve()),
+        "reduced_embeddings_checkpoint_path": str(reduced_embeddings_checkpoint_path.resolve()),
+        "reducer_model_checkpoint_path": str(reducer_model_checkpoint_path.resolve()),
         "filtered_documents_checkpoint_path": str(filtered_checkpoint_path.resolve()),
         "checkpoint_manifest_path": str(checkpoint_manifest_path.resolve()),
         "time_granularity": args.time_granularity,
