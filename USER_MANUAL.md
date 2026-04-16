@@ -131,15 +131,19 @@ result/
 
 作用：
 
-- 清理当前项目生成的 processed/state/reports/exports 产物
+- 清理主流程自己的核心产物与状态文件
 - 从 `raw/` 全量重新计算
 
 会重建的目录/文件：
 
-- `data/processed/*`
-- `data/state/*`
-- `data/reports/*`
-- `data/exports/*`
+- `data/processed/merged_dedup/`
+- `data/processed/preprocessed/`
+- `data/processed/text_dedup/`
+- `data/state/raw_manifest.json`
+- `data/state/id_hashes.txt`
+- `data/state/text_hashes.txt`
+- `data/reports/pipeline_last_run.json`
+- `data/exports/*.csv`
 
 不会动的内容：
 
@@ -147,12 +151,16 @@ result/
 - 仓库中的代码文件
 - `bert/data/`
 - `bert/artifacts/`
+- `data/processed/text_dedup_predicted*/`
+- `data/processed/` 下其他不属于主流程三层产物的目录
 
 适用场景：
 
 - 修改了清洗逻辑
 - 状态文件不可信
 - 希望完全重算历史数据
+
+如果你希望 `06-10` 的预测或分析结果也和这次 full rebuild 保持一致，需要在 `main.py full` 之后重新运行对应脚本，或者手动清理那些下游目录。
 
 ### 5.3 查看状态
 

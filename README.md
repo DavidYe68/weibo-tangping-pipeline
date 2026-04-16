@@ -118,6 +118,11 @@ py -3.11 -m venv .venv
 
 Windows 下把 `.venv/bin/python` 替换为 `.\.venv\Scripts\python.exe` 即可。
 
+补充提醒：
+
+- `bert/02_llm_label_local.py` 在首次运行前，通常需要先准备 `bert/llm_label_local.toml` 或相应环境变量/API key；直接裸跑很可能卡在 provider 配置上。
+- 推荐先复制 `bert/llm_label_local.example.toml` 再修改；具体写法见 [bert/README.md](/Users/apple/Local/fdurop/code/result/bert/README.md) 和 [WINDOWS_SETUP.md](/Users/apple/Local/fdurop/code/result/WINDOWS_SETUP.md)。
+
 ## 文档导航
 
 - [USER_MANUAL.md](/Users/apple/Local/fdurop/code/result/USER_MANUAL.md)：`raw/ -> data/processed/` 主流程、状态文件、导出逻辑

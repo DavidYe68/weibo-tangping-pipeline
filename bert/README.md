@@ -71,6 +71,19 @@ bert/
 - 如果你不改参数，`02` 的默认输出可以直接接 `03` 的默认输入。
 - 请先人工审核，再把结果拿去训练。
 
+运行前建议先把 provider 配清楚：
+
+```bash
+cp bert/llm_label_local.example.toml bert/llm_label_local.toml
+.venv/bin/python bert/02_llm_label_local.py --config bert/llm_label_local.toml
+```
+
+补充说明：
+
+- 如果 `bert/llm_label_local.toml` 存在，`02` 会默认读取它；最稳妥的做法是复制示例模板后，把 `[labeler]` 和 `[fixer]` 明确改成你本机实际可用的 provider / model。
+- 如果你不用配置文件，也可以直接传参数，或者准备环境变量：`DASHSCOPE_API_KEY`、`QWEN_API_KEY`、`OPENAI_API_KEY`、`FIXER_API_KEY`。
+- 如果你走本地 `ollama`，通常不需要 API key，但要先确保本地服务已经启动，对应模型已经拉好。
+
 ### 3. 标签整理
 
 如果你的训练任务是单标签二分类，可以先把审核结果整理成标准二值标签：
@@ -82,6 +95,20 @@ bert/
 ```
 
 这一步主要服务于单标签训练；如果你已经准备好了 `broad / strict` 两列，可以直接进入 `05`。
+
+如果人工审核被拆成多份 XLSX，可以先合并再训练：
+
+```bash
+.venv/bin/python bert/scripts/merge_xlsx_annotations.py \
+  bert/data/review_part1.xlsx bert/data/review_part2.xlsx \
+  -o bert/data/review_merged.xlsx \
+  --report-json bert/data/review_merged.report.json
+```
+
+说明：
+
+- 第一个 XLSX 会被当作主模板。
+- 合并后的 `review_merged.xlsx` 可以直接继续喂给 `04` 或 `05`。
 
 ### 4. 单标签训练
 
