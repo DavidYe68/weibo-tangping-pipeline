@@ -1,26 +1,45 @@
 # BERT 工作流说明
 
-本手册负责 `bert/` 目录下的完整下游流程：抽样、预标注、标签整理、训练、全量预测，以及 `07-10` 的 broad 分析链。主流程 `raw/ -> data/processed/` 请看 [USER_MANUAL.md](/Users/apple/Local/fdurop/code/result/USER_MANUAL.md)。
+这份文档只讲 `bert/` 目录下的下游流程：
 
-## 运行前先确认环境
+- 抽样
+- LLM 预标注
+- 标签整理
+- 单标签 / 双标签训练
+- 全量预测
+- `07-10` 的 broad 分析链
 
-默认使用仓库根目录下的 `.venv`。
+如果你还没有把 `raw/` 处理成 `data/processed/text_dedup/`，先去看根目录的 [`USER_MANUAL.md`](../USER_MANUAL.md)。
+
+## 先别急着跑命令，先理解这条流程在干什么
+
+这一套流程不是“拿到数据以后直接训练模型”，中间其实有一个很重要的人工判断环节。
+
+更贴近真实工作的顺序是：
+
+1. 从全量语料里抽一批样本
+2. 用 LLM 先打一个预标注草稿
+3. 人工审核，把边界真正定下来
+4. 再用审核后的数据训练分类器
+5. 把训练好的模型打到全量语料
+6. 在全量预测结果上继续做主题、语义和漂移分析
+
+这里最容易踩的坑只有一个：
+
+`02_llm_label_local.py` 只是帮你省初筛时间，不是替你做研究判断。
+
+如果没有人工复核，后面的训练质量会很不稳。
+
+## 环境约定
+
+仓库默认使用根目录下的 `.venv`：
 
 - macOS / Linux：`.venv/bin/python`
 - Windows PowerShell：`.\.venv\Scripts\python.exe`
 
-下面示例统一采用 macOS / Linux 写法；Windows 下把 `.venv/bin/python` 替换为 `.\.venv\Scripts\python.exe` 即可。
+下面示例统一按 macOS / Linux 写。Windows 下只要替换解释器路径。
 
-## 核心原则
-
-1. `02_llm_label_local.py` 只负责生成预标注草稿，不负责替代人工判断。
-2. 进入训练阶段的数据，默认都应当是人工复核过的 CSV/XLSX。
-3. `04_train_bert_classifier.py` 负责单标签训练。
-4. `05_train_dual_label_classifier.py` 负责 `broad / strict` 双标签训练。
-5. `06_predict_bert_classifier.py` 负责把训练好的模型批量打到全量 parquet 上。
-6. `07-10` 是围绕 broad 预测结果展开的分析链。
-
-## 目录概览
+## 这条流程里每个脚本负责什么
 
 ```text
 bert/
@@ -34,60 +53,98 @@ bert/
 ├── 08_topic_model_bertopic.py
 ├── 09_keyword_semantic_analysis.py
 ├── 10_concept_drift_analysis.py
-├── lib/             训练、预测和分析阶段的公共模块
-├── scripts/         辅助脚本
-├── data/            抽样表、审核表等人工处理中间文件
-└── artifacts/       模型、评估结果、预测结果、分析结果（建议按 runs/ 和 broad_analysis/ 分层）
+├── scripts/
+├── lib/
+├── data/
+└── artifacts/
 ```
 
-## artifacts 目录约定
+可以粗暴理解成：
 
-为了避免训练 run、分析中间结果和历史快照堆在同一层，建议把 `bert/artifacts/` 固定整理成下面这个结构：
+- `01-03`：准备样本和标签
+- `04-06`：训练模型并打到全量数据
+- `07-10`：把 broad 预测结果变成能读、能讲、能汇报的分析结果
+
+## 推荐的真实工作顺序
+
+如果你是第一次接这条流程，建议按下面走：
+
+1. `01` 抽样
+2. `02` 预标注
+3. 人工审核
+4. 单标签任务走 `03 -> 04`
+5. 双标签任务直接走 `05`
+6. 跑 `06` 做全量预测
+7. 跑 `07`
+8. 跑 `08`
+9. 跑 `09`
+10. 跑 `10`
+
+如果你的目标只是训练一个分类器，其实跑到 `06` 就可以停。
+
+如果你的目标是做 broad 语义分析，重点就会落在 `07-10`。
+
+## `bert/data/` 和 `bert/artifacts/` 怎么理解
+
+### `bert/data/`
+
+这个目录更像“人工处理工作台”。
+
+常见内容包括：
+
+- 抽样结果
+- 预标注结果
+- 人工审核表
+- 合并后的审核表
+
+### `bert/artifacts/`
+
+这个目录更像“模型和分析产物仓库”。
+
+建议长期保持下面这种结构：
 
 ```text
 bert/artifacts/
 ├── runs/
-│   ├── dual_label/      dual-label 训练 run
-│   └── single_label/    single-label 训练 run
-└── broad_analysis/      07-10 分析链的标准输出
-    ├── topic_model_BAAI/ 08 的 canonical BERTopic 输出
-    ├── semantic_analysis/ 09 的 canonical 语义分析输出
-    ├── drift_analysis/    10 的 canonical 漂移分析输出
-    ├── overview/        只保留“先看什么”的浓缩表和 manifest
-    ├── snapshots/       带日期或一次性批处理的快照输出
-    └── legacy/          已淘汰或重复的历史输出
+│   ├── dual_label/
+│   └── single_label/
+└── broad_analysis/
+    ├── topic_model_BAAI/
+    ├── semantic_analysis/
+    ├── drift_analysis/
+    ├── overview/
+    ├── snapshots/
+    └── legacy/
 ```
 
-补充约定：
+为什么这样分：
 
-- `04` / `05` 的新训练产物，优先直接写到 `bert/artifacts/runs/...`
-- `07`-`10` 的分析产物，继续放在 `bert/artifacts/broad_analysis/`
-- `broad_analysis/README.md` + `broad_analysis/overview/` 是默认阅读入口；原始明细继续保留在各自目录
-- `08` 的主结果固定放在 `bert/artifacts/broad_analysis/topic_model_BAAI/`
-- `09` 的当前主结果固定放在 `bert/artifacts/broad_analysis/semantic_analysis/`
-- `10` 的当前主结果固定放在 `bert/artifacts/broad_analysis/drift_analysis/`
-- 带日期后缀或 overnight 的分析批次，优先放进 `bert/artifacts/broad_analysis/snapshots/`
-- 历史遗留的旧版 topic / semantic / drift 目录，统一挪到 `bert/artifacts/broad_analysis/legacy/`
+- `runs/` 放训练 run，便于回看模型、指标和测试集
+- `broad_analysis/` 放分析结果，便于后面做整理、比较和汇报
+- `snapshots/` 放一次性批次，避免当前主结果被冲乱
+- `legacy/` 放历史残留，省得和现在的标准产物混在一起
 
-仓库里带了一个可重复执行的整理脚本：
+仓库里已经带了整理脚本：
 
 ```bash
 .venv/bin/python bert/scripts/organize_artifacts.py
 ```
 
-说明：
+如果你发现 `artifacts/` 目录越跑越乱，这个脚本会有用。
 
-- 这个脚本会把顶层的训练 run 归档到 `runs/`
-- 会把 dated / overnight 的 broad-analysis 输出归档到 `snapshots/`
-- 会把最新的 semantic / drift 快照补到 canonical 目录
-- 会把旧版或重复的 broad-analysis 输出归到 `legacy/`
-- 脚本默认值里仍保留了部分旧路径名以兼容老命令；如果你想从一开始就保持整洁，训练时请显式把输出目录写到 `runs/`
+## 1. 从 parquet 抽样：`01_stratified_sampling.py`
 
-## 最常见的真实流程
+这一步是在做什么：
 
-### 1. 从 parquet 抽样
+- 从 `data/processed/text_dedup/*.parquet` 里抽一批样本
+- 让后面的标注集不要全被某一类文本占满
+- 给人工审核准备一个起点
 
-默认输入是 `data/processed/text_dedup/*.parquet`，默认输出是 `bert/data/sample.csv`。
+默认输入一般是：
+
+- `data/processed/text_dedup/*.parquet`
+
+常用命令：
 
 ```bash
 .venv/bin/python bert/01_stratified_sampling.py \
@@ -97,9 +154,29 @@ bert/artifacts/
   --report_path "bert/data/sampling_report.json"
 ```
 
-### 2. 用 LLM 做预标注
+跑完之后，最值得看的通常是：
 
-默认输入是 `bert/data/sample.csv`，默认输出是 `bert/data/labeled.csv`。
+- `bert/data/sample.csv`
+- `bert/data/sampling_report.json`
+
+什么时候你需要回头改这一步：
+
+- 样本量明显不够
+- 某些关键词或时期占比失衡
+- 你想针对特定研究问题重新抽一批更偏的样本
+
+## 2. 用 LLM 做预标注：`02_llm_label_local.py`
+
+这一步的作用很明确：
+
+- 先给样本打一版“机器草稿”
+- 减少人工从零开始标的时间
+
+但还是那句话：
+
+这一步不是最终标签。
+
+常用命令：
 
 ```bash
 .venv/bin/python bert/02_llm_label_local.py \
@@ -108,28 +185,39 @@ bert/artifacts/
   --report_path "bert/data/labeling_report.json"
 ```
 
-说明：
-
-- 这一步的输出只能当“待审核草稿”。
-- 如果你不改参数，`02` 的默认输出可以直接接 `03` 的默认输入。
-- 请先人工审核，再把结果拿去训练。
-
-运行前建议先把 provider 配清楚：
+最稳妥的做法，是先复制一份配置模板：
 
 ```bash
 cp bert/llm_label_local.example.toml bert/llm_label_local.toml
 .venv/bin/python bert/02_llm_label_local.py --config bert/llm_label_local.toml
 ```
 
-补充说明：
+运行前最好确认三件事：
 
-- 如果 `bert/llm_label_local.toml` 存在，`02` 会默认读取它；最稳妥的做法是复制示例模板后，把 `[labeler]` 和 `[fixer]` 明确改成你本机实际可用的 provider / model。
-- 如果你不用配置文件，也可以直接传参数，或者准备环境变量：`DASHSCOPE_API_KEY`、`QWEN_API_KEY`、`OPENAI_API_KEY`、`FIXER_API_KEY`。
-- 如果你走本地 `ollama`，通常不需要 API key，但要先确保本地服务已经启动，对应模型已经拉好。
+1. provider 配置是可用的
+2. model 名称是你本机或账号上真能调用的
+3. API key 或本地服务已经准备好
 
-### 3. 标签整理
+如果你不用配置文件，也可以用环境变量，比如：
 
-如果你的训练任务是单标签二分类，可以先把审核结果整理成标准二值标签：
+- `DASHSCOPE_API_KEY`
+- `QWEN_API_KEY`
+- `OPENAI_API_KEY`
+- `FIXER_API_KEY`
+
+如果你走本地 `ollama`：
+
+- 通常不需要 API key
+- 但本地服务要先启动
+- 模型也要提前拉好
+
+## 3. 标签整理：`03_normalize_labels.py`
+
+这一步不是每次都要跑。
+
+它主要服务于单标签任务，也就是你想把审核结果整理成标准二值标签的时候。
+
+常用命令：
 
 ```bash
 .venv/bin/python bert/03_normalize_labels.py \
@@ -137,9 +225,17 @@ cp bert/llm_label_local.example.toml bert/llm_label_local.toml
   --output_csv "bert/data/labeled_binary.csv"
 ```
 
-这一步主要服务于单标签训练；如果你已经准备好了 `broad / strict` 两列，可以直接进入 `05`。
+什么时候要用：
 
-如果人工审核被拆成多份 XLSX，可以先合并再训练：
+- 你的审核表是单标签二分类
+- 列名和格式还不够统一
+
+什么时候可以跳过：
+
+- 你的审核表已经明确有 `broad` 和 `strict` 两列
+- 你准备直接做双标签训练
+
+如果人工审核分散在多个 XLSX，可以先合并：
 
 ```bash
 .venv/bin/python bert/scripts/merge_xlsx_annotations.py \
@@ -148,14 +244,17 @@ cp bert/llm_label_local.example.toml bert/llm_label_local.toml
   --report-json bert/data/review_merged.report.json
 ```
 
-说明：
+## 4. 单标签训练：`04_train_bert_classifier.py`
 
-- 第一个 XLSX 会被当作主模板。
-- 合并后的 `review_merged.xlsx` 可以直接继续喂给 `04` 或 `05`。
+这个脚本适合你只有一套标签的时候。
 
-### 4. 单标签训练
+比如：
 
-如果你的审核结果只有一套标签，例如 `label` / `tangping_related` / `tangping_related_label`：
+- `label`
+- `tangping_related`
+- `tangping_related_label`
+
+常用命令：
 
 ```bash
 .venv/bin/python bert/04_train_bert_classifier.py \
@@ -163,7 +262,7 @@ cp bert/llm_label_local.example.toml bert/llm_label_local.toml
   --output_dir "bert/artifacts/runs/single_label/single_label_run"
 ```
 
-如果你想显式指定哪个文件只进训练、哪个文件单独留作测试：
+如果你想固定一部分测试集，不想让脚本随机切进去：
 
 ```bash
 .venv/bin/python bert/04_train_bert_classifier.py \
@@ -173,16 +272,23 @@ cp bert/llm_label_local.example.toml bert/llm_label_local.toml
   --output_dir "bert/artifacts/runs/single_label/single_label_holdout"
 ```
 
-规则：
+怎么理解这些参数：
 
-- `--input_csv`：这些文件会先合并，再随机切成 train/val/test。
-- `--train_csv` / `--train_only_csv`：这些文件只进训练集。
-- `--val_csv`：这些文件只进验证集。
-- `--test_csv`：这些文件只进测试集。
+- `--input_csv`：合并后再随机切 train/val/test
+- `--train_csv` / `--train_only_csv`：只进训练集
+- `--val_csv`：只进验证集
+- `--test_csv`：只进测试集
 
-### 5. 双标签训练
+## 5. 双标签训练：`05_train_dual_label_classifier.py`
 
-如果你的人工审核表里同时有 `broad` 和 `strict` 两列：
+如果你的人工审核表里已经有：
+
+- `broad`
+- `strict`
+
+那通常直接走这个脚本。
+
+常用命令：
 
 ```bash
 .venv/bin/python bert/05_train_dual_label_classifier.py \
@@ -190,7 +296,7 @@ cp bert/llm_label_local.example.toml bert/llm_label_local.toml
   --base_output_dir "bert/artifacts/runs/dual_label/dual_label_run"
 ```
 
-如果你想把某一份文件固定留作测试，另一些只进训练：
+如果你想固定留一份测试集：
 
 ```bash
 .venv/bin/python bert/05_train_dual_label_classifier.py \
@@ -200,27 +306,29 @@ cp bert/llm_label_local.example.toml bert/llm_label_local.toml
   --base_output_dir "bert/artifacts/runs/dual_label/dual_label_holdout"
 ```
 
-规则和 `04` 一样：
+怎么理解这些 split 参数：
 
-- `--input_path`：合并后随机切分。
-- `--train_path`：只进训练集。
-- `--val_path`：只进验证集。
-- `--test_path`：只进测试集。
+- `--input_path`：合并后随机切分
+- `--train_path`：只进训练集
+- `--val_path`：只进验证集
+- `--test_path`：只进测试集
 
-### 关于固定 split 参数
+要注意的一点是：
 
-如果你传了 `--train_path`、`--val_path`、`--test_path` 这类参数：
+固定 split 文件不会改变 `--input_path` 那批数据内部的切分逻辑，而是在随机切分之后再追加到指定 split。
 
-- `--input_path` 里的文件仍然先按 `val_size` / `test_size` 自己完成随机切分。
-- 这些固定 split 的文件是在切分完成后再追加到指定 split。
-- 所以“`input_path` 这批数据内部的切分比例”不会变。
-- 变化的是“最终总数据集”的整体比例，因为你额外加了只进某个 split 的样本。
+所以：
 
-## 列名约定
+- 内部随机切分比例不变
+- 最终总数据集比例会变
+
+这是正常现象。
+
+## 文本列和标签列怎么识别
 
 ### 文本列
 
-脚本会自动识别这些常见列名：
+脚本通常会自动识别这些常见列名：
 
 - `cleaned_text`
 - `cleaned_text_with_emoji`
@@ -229,12 +337,12 @@ cp bert/llm_label_local.example.toml bert/llm_label_local.toml
 - `text`
 - `content`
 
-如果自动识别不到，显式传 `--text_col`。
+如果自动识别不到，再显式传 `--text_col`。
 
-补充约定：
+一般建议：
 
-- BERT 训练 / 预测默认优先 `cleaned_text`，适合把 emoji 压成统一占位的二分类场景
-- `07`-`10` 分析链也默认优先 `cleaned_text`；如果你想实验保留 emoji 文本对主题词的影响，再显式传 `--text_col cleaned_text_with_emoji`
+- 分类训练和预测优先 `cleaned_text`
+- 如果你真的想保留 emoji 的语义影响，再考虑 `cleaned_text_with_emoji`
 
 ### 单标签列
 
@@ -246,7 +354,7 @@ cp bert/llm_label_local.example.toml bert/llm_label_local.toml
 - `broad`
 - `strict`
 
-如果你想强制指定，传 `--label_col`。
+如果不想让脚本自动猜，直接传 `--label_col`。
 
 ### 双标签列
 
@@ -260,9 +368,9 @@ cp bert/llm_label_local.example.toml bert/llm_label_local.toml
 - `--broad_col`
 - `--strict_col`
 
-## 输出产物
+## 训练输出怎么看
 
-`04` 和 `05` 的输出都会落在你指定的 `output_dir` / `base_output_dir` 下，常见文件包括：
+`04` 和 `05` 的输出目录里，常见会有这些东西：
 
 - `train_split.csv`
 - `val_split.csv`
@@ -273,7 +381,7 @@ cp bert/llm_label_local.example.toml bert/llm_label_local.toml
 - `test_misclassified.csv`
 - `best_model/`
 
-双标签训练额外会生成一套分层目录，建议按这个顺序看：
+如果是双标签训练，还会多出一套更方便排查的内容。比较值得先看的有：
 
 - `run_overview.md`
 - `shared/shared_split_dataset.csv`
@@ -282,22 +390,27 @@ cp bert/llm_label_local.example.toml bert/llm_label_local.toml
 - `compare/test_misclassified_side_by_side.csv`
 - `inspect/summary.md`
 - `inspect/diagnosis/label_diagnosis.csv`
-- `inspect/review/top_fp_*.csv`
-- `inspect/review/top_fn_*.csv`
 
-## 进入 07-10 之前
+实际看结果时，我更建议这样读：
 
-如果你已经完成：
+1. 先看 `metrics.json`，判断模型大体行不行
+2. 再看 `test_misclassified.csv`，确认错在哪里
+3. 如果是双标签任务，再看 side-by-side 结果，比较 `broad` 和 `strict` 哪个更不稳
 
-1. 主流程产出 `data/processed/text_dedup/*.parquet`
-2. 人工审核
-3. `05_train_dual_label_classifier.py`
+## 6. 全量预测：`06_predict_bert_classifier.py`
 
-那么接下来建议先跑一次 `06`，把 `broad` 模型打到全量语料上。
+这一步是在做什么：
 
-### 6. 用 broad 模型做全量预测
+- 把你训练好的模型打到全量 parquet
+- 让后面的分析不再只依赖抽样数据
 
-`06_predict_bert_classifier.py` 的默认输出目录是 `data/processed/text_dedup_predicted/`，但如果后续要进入 `07-10`，建议显式写成 `data/processed/text_dedup_predicted_broad`，这样能直接对齐 `07` 的默认输入。
+如果你后面准备进入 `07-10`，建议把输出目录显式写成：
+
+- `data/processed/text_dedup_predicted_broad`
+
+这样最顺手。
+
+常用命令：
 
 ```bash
 .venv/bin/python bert/06_predict_bert_classifier.py \
@@ -307,7 +420,7 @@ cp bert/llm_label_local.example.toml bert/llm_label_local.toml
   --device cuda
 ```
 
-`06` 常见输出列包括：
+常见输出列包括：
 
 - `pred_label`
 - `pred_label_text`
@@ -315,18 +428,27 @@ cp bert/llm_label_local.example.toml bert/llm_label_local.toml
 - `pred_prob_0`
 - `pred_confidence`
 
-## 07-10 分析链路
+如果你只是想保留正样本，也可以看脚本的 `--only_positive` 参数。
 
-### 7. `07_build_broad_analysis_base.py`
+## 进入 `07-10` 之前，先确认这三件事
 
-作用：
+1. 主流程已经产出 `data/processed/text_dedup/*.parquet`
+2. 训练数据是人工复核过的
+3. 你已经有一套靠谱的 broad 预测结果
+
+这三件事缺一个，后面的 broad 分析都会变得很虚。
+
+## 7. 构建 broad 分析底表：`07_build_broad_analysis_base.py`
+
+这一步的任务是把预测结果整理成一个干净、统一、后面都能吃的分析底表。
+
+它会做的事包括：
 
 - 读取 `06` 的预测结果
 - 规范化文本列、时间列、关键词列
-- 自动识别并规范化 IP 属地列；缺失 IP 会统一记为 `UNKNOWN_IP`
+- 识别并规范化 IP 属地列
 - 默认只保留 `pred_label == 1` 的正样本
-- 生成后续 `08` / `09` 共用的分析底表
-- 默认沿用仓库的文本列自动识别顺序，通常会选到 `cleaned_text`
+- 生成 `08` 和 `09` 共用的底表
 
 默认命令：
 
@@ -334,7 +456,7 @@ cp bert/llm_label_local.example.toml bert/llm_label_local.toml
 .venv/bin/python bert/07_build_broad_analysis_base.py
 ```
 
-如果你的预测文件放在别的位置：
+如果你的预测目录不在默认位置：
 
 ```bash
 .venv/bin/python bert/07_build_broad_analysis_base.py \
@@ -344,24 +466,25 @@ cp bert/llm_label_local.example.toml bert/llm_label_local.toml
 
 常用可选参数：
 
-- `--include_negative`：连负样本也保留
-- `--min_confidence 0.8`：只保留置信度足够高的样本
-- `--text_col` / `--time_col` / `--keyword_col` / `--ip_col`：强制指定列名
+- `--include_negative`
+- `--min_confidence 0.8`
+- `--text_col`
+- `--time_col`
+- `--keyword_col`
+- `--ip_col`
 
 重点输出：
 
 - `bert/artifacts/broad_analysis/analysis_base.parquet`
 - `bert/artifacts/broad_analysis/analysis_base_report.json`
 
-### 8. `08_topic_model_bertopic.py`
+## 8. 主题建模：`08_topic_model_bertopic.py`
 
-作用：
+这一步更适合回答：
 
-- 在 `07` 生成的分析底表上做 BERTopic
-- 输出文档级 topic 结果、topic 词表，以及 `topic / 时间 / IP` 三个维度的占比表
-- 缺失 IP 不会被丢掉，而是作为 `UNKNOWN_IP` 单独保留
-- 支持 embedding 和 UMAP 降维结果断点续跑，避免中途打断后从头编码或重跑降维
-- 默认启用 `multilingual + jieba` 的中文主题提词，避免 topic 标签被英文/代码碎片主导
+- broad 语料里有哪些主题
+- 各主题在时间上怎么变化
+- 不同关键词、不同地区上，主题占比怎么变
 
 默认命令：
 
@@ -382,7 +505,7 @@ cp bert/llm_label_local.example.toml bert/llm_label_local.toml
   --save_model
 ```
 
-如果你的目标是把主题收敛到更适合汇报的 `8-15` 个大主题，可以先从这组更稳妥的参数起步：
+如果你希望主题更适合汇报，而不是切得特别碎，可以从更稳一点的参数开始：
 
 ```bash
 .venv/bin/python bert/08_topic_model_bertopic.py \
@@ -395,52 +518,120 @@ cp bert/llm_label_local.example.toml bert/llm_label_local.toml
   --resume
 ```
 
-常用可选参数：
+常见输出：
 
-- `--device auto|cpu|cuda|mps`：控制 sentence-transformers 的编码设备
-- `--embedding_model`：指定模型名或本地目录；默认改为 `BAAI/bge-small-zh-v1.5`
-- `--topic_language multilingual|english`：BERTopic 的语言模式；中文语料建议保持默认 `multilingual`
-- `--topic_tokenizer jieba|default`：topic 提词的分词方式；默认 `jieba`
-- `--topic_stopwords_path`：topic 提词停用词表，默认 `bert/config/topic_stopwords.txt`
-- `--topic_token_min_length`：`jieba` 提词时保留的最短 token 长度，默认 `2`
-- `--umap_n_neighbors`：显式控制 UMAP 邻居数，默认 `30`
-- `--local_files_only`：只从本地加载 embedding 资源
-- `--calculate_probabilities`：显式计算“每篇文档 x 全部 topic”的完整概率矩阵；非常吃内存，默认关闭
-- `--resume`：如果已有 embedding / UMAP checkpoint，则尽量从 checkpoint 继续
-- `--checkpoint_dir`：自定义 checkpoint 目录
-- `--umap_low_memory / --no-umap_low_memory`：控制 UMAP 低内存模式，默认开启
-- `--hdbscan_core_dist_n_jobs`：控制 HDBSCAN 并行度；更小的值更省内存
-- `--hdbscan_min_samples`：单独控制 HDBSCAN 的 `min_samples`；默认等于 `min_topic_size`，适当调低通常能显著减少 outlier
-- `--outlier_reduction_strategy`：训练后用 BERTopic 官方 `reduce_outliers` 做离群文档回填，支持 `c-tf-idf`、`distributions`、`embeddings`、`probabilities`、`c-tf-idf+distributions`
-- `--outlier_reduction_threshold`：离群文档回填的相似度阈值；越高越保守
-- `--ip_col`：手动指定 IP 列名
+- `topic_model_summary.json`
+- `readouts/topic_info.csv`
+- `readouts/topic_overview.csv`
+- `readouts/topic_terms.csv`
+- `readouts/topic_share_by_period.csv`
+- `viz_inputs/document_topics.parquet`
 
-重点输出：
+如果你第一次看 `08` 的结果，建议优先看：
 
-- `bert/artifacts/broad_analysis/topic_model_BAAI/topic_model_summary.json`
-- `bert/artifacts/broad_analysis/topic_model_BAAI/readouts/topic_info.csv`
-- `bert/artifacts/broad_analysis/topic_model_BAAI/readouts/topic_overview.csv`
-- `bert/artifacts/broad_analysis/topic_model_BAAI/readouts/topic_terms.csv`
-- `bert/artifacts/broad_analysis/topic_model_BAAI/readouts/topic_share_by_period.csv`
-- `bert/artifacts/broad_analysis/topic_model_BAAI/readouts/topic_share_by_period_and_keyword.csv`
-- `bert/artifacts/broad_analysis/topic_model_BAAI/viz_inputs/document_topics.parquet`
-- `bert/artifacts/broad_analysis/topic_model_BAAI/viz_inputs/topic_share_by_ip.csv`
-- `bert/artifacts/broad_analysis/topic_model_BAAI/viz_inputs/topic_share_by_period_and_ip.csv`
-- `bert/artifacts/broad_analysis/topic_model_BAAI/viz_inputs/topic_share_by_period_and_ip_and_keyword.csv`
-- 如果启用 `--save_model`，模型会保存到 `bert/artifacts/broad_analysis/topic_model_BAAI/viz_inputs/model/`
+1. `topic_overview.csv`
+2. `topic_info.csv`
+3. `topic_share_by_period.csv`
 
-补充：
+这三个文件最容易先看出“主题大概长什么样”和“时间上怎么变”。不过它们各自解决的问题不一样，最好别混着看。
 
-- `topic_info.csv` 会额外预留 `topic_label_machine` 和 `topic_label_zh` 两列，便于后续手工补中文主题标签。
-- `topic_overview.csv` 会把主题规模、峰值时间、dominant keyword 和 top terms 预先整理好，适合直接接中期展示或人工 topic 编码。
+### `topic_overview.csv` 里会有什么
 
-### 9. `09_keyword_semantic_analysis.py`
+这个文件适合当第一眼总览表。它不是最原始的 BERTopic 输出，而是脚本整理过的一张“主题摘要表”。
 
-作用：
+通常会看到这些信息：
 
-- 对每个关键词在不同时间段做共现词分析
-- 用 embedding 对候选词再排序，得到 semantic neighbors
-- 脚本会输出分阶段进度，便于判断是在分词、统计还是 embedding 阶段
+- `topic_id`：主题编号
+- `topic_label_machine`：模型自动生成的主题名
+- `topic_label_zh`：预留给人工补中文标签的列，默认可能是空的
+- `topic_label_display`：展示时优先使用的主题名
+- `topic_count`：这个主题一共覆盖多少条文本
+- `share_of_all_docs_pct`：它占全部分析文本的比例
+- `share_of_clustered_docs_pct`：它占非离群主题文本的比例
+- `top_terms`：这个主题最能代表它的一串关键词
+- `peak_period`：这个主题最活跃的时间段
+- `peak_doc_count` / `peak_doc_share_pct`：它在峰值时间段有多少文本、占当期多少比例
+- `dominant_keyword`：在这个主题里最常见的研究关键词，比如更偏“躺平”还是“摆烂”
+- `dominant_keyword_share_within_topic_pct`：这个关键词在该主题内部占比多高
+
+怎么理解这张表：
+
+- 如果你想快速知道“这轮主题模型大概切出了哪些块”，先看它
+- 如果你想挑几个重点主题做人工命名或中期汇报，也先看它
+- 如果某个主题 `topic_count` 很大，但 `top_terms` 很杂，通常说明这个主题还需要继续清理或合并
+
+### `topic_info.csv` 里会有什么
+
+这个文件更接近 BERTopic 原始结果，是一张更底层的主题信息表。
+
+通常会看到这些信息：
+
+- `Topic`：主题编号
+- `Count`：该主题包含的文本数
+- `Name`：BERTopic 自动生成的主题名称，通常是若干关键词拼接出来的
+- `Representation`、`Representative_Docs` 一类字段：主题代表词或代表文本
+- `topic_label_machine`：脚本补上的机器标签列
+- `topic_label_zh`：脚本预留的人工中文标签列
+
+这张表更适合做这些事：
+
+- 检查 BERTopic 原始命名是不是靠谱
+- 回看某个主题的代表文本到底像不像它的名字
+- 区分正常主题和离群项
+
+要特别注意：
+
+- `Topic = -1` 一般表示离群文本，也就是没有稳定归进某个主题的内容
+- 所以你看主题数量时，最好把 `-1` 和正常主题分开理解
+
+### `topic_share_by_period.csv` 里会有什么
+
+这个文件是时间分布表，用来回答“某个主题在哪些时间段最明显”。
+
+通常会看到这些信息：
+
+- `period_label`：时间段标签，比如按月或按季度
+- `topic_id`
+- `topic_label`
+- `doc_count`：这个时间段里，该主题有多少条文本
+- `doc_share`：这个主题在该时间段内部占比多少
+
+怎么理解：
+
+- `doc_count` 看的是绝对量，适合看某段时间讨论到底多不多
+- `doc_share` 看的是相对占比，适合看“这一时期的话题重心是不是更偏向这个主题”
+
+这张表最适合回答：
+
+- 哪个主题在哪个时期达到峰值
+- 某个主题是短期爆发，还是长期持续
+- 时间变化是“总量一起涨”，还是“结构比例发生了变化”
+
+如果你看到某个主题在某段时间 `doc_count` 很高，但 `doc_share` 没明显上升，往往说明那段时间整体文本都变多了，不一定是这个主题单独变得更重要。
+
+### 一个实用的阅读顺序
+
+如果你是第一次打开 `08` 的结果，推荐这样读：
+
+1. 先看 `topic_overview.csv`，建立“这轮主题大盘长什么样”的感觉
+2. 再看 `topic_info.csv`，确认每个主题的名字、代表词和代表文本到底靠不靠谱
+3. 最后看 `topic_share_by_period.csv`，判断这些主题是怎么随时间变化的
+
+这样读下来，通常就能比较稳地回答三个问题：
+
+- 这轮模型切出了哪些主要主题
+- 每个主题大概在说什么
+- 它们是在哪些时间段变强或变弱的
+
+## 9. 关键词语义分析：`09_keyword_semantic_analysis.py`
+
+这一步更偏“关键词附近都在和谁一起出现，它们的语义邻居是什么”。
+
+它会做的事：
+
+- 为每个关键词、每个时间段提取可解释的临近词候选
+- 先做共现词统计
+- 再用 embedding 重排，得到更稳定的 semantic neighbors
 
 默认命令：
 
@@ -461,39 +652,225 @@ cp bert/llm_label_local.example.toml bert/llm_label_local.toml
 
 重点输出：
 
-- `bert/artifacts/broad_analysis/semantic_analysis/semantic_analysis_summary.json`
-- `bert/artifacts/broad_analysis/semantic_analysis/viz_inputs/keyword_cooccurrence.csv`
-- `bert/artifacts/broad_analysis/semantic_analysis/viz_inputs/keyword_semantic_neighbors.csv`
-- `bert/artifacts/broad_analysis/semantic_analysis/viz_inputs/tokenized_analysis_base.parquet`
+- `semantic_analysis_summary.json`
+- `viz_inputs/keyword_cooccurrence.csv`
+- `viz_inputs/keyword_semantic_neighbors.csv`
+- `viz_inputs/tokenized_analysis_base.parquet`
 
-补充：
-
-- `08` / `09` 默认共用停用词表 `bert/config/topic_stopwords.txt`
-- `09` 的默认 embedding 也改为 `BAAI/bge-small-zh-v1.5`，和 `08` 保持一致
-
-如果你发现 `09` 的原始词表太脏，不适合直接拿去讲中期，可以在已有 `09` 输出上再跑一层“报告整理”：
+如果你想把 `09` 的结果整理成更适合阅读和汇报的表，再接着跑：
 
 ```bash
 .venv/bin/python bert/09_prepare_semantic_midterm.py \
   --semantic_dir "bert/artifacts/broad_analysis/semantic_analysis"
 ```
 
-这一步不会重跑重型 embedding，只会读取 `09` 的现成结果并生成：
+这一步会生成一批更容易直接读的结果，比如：
 
-- `readouts/midterm_bundle/semantic_keyword_overview.csv`：每个关键词总体上更适合进入中期报告的词
-- `readouts/midterm_bundle/semantic_period_shortlist.csv`：按月筛过一轮的 lead terms
-- `readouts/midterm_bundle/semantic_midterm_coding_template.csv`：人工编码模板，附代表原文
-- `readouts/midterm_bundle/semantic_noise_diagnostics.csv`：被自动判成噪声的词和原因
-- `readouts/midterm_bundle/semantic_midterm_notes.md`：面向中期汇报的阅读说明
+- `semantic_keyword_overview.csv`
+- `semantic_context_trajectory.csv`
+- `semantic_context_shift_summary.csv`
+- `semantic_period_shortlist.csv`
+- `semantic_bucket_override_template.csv`
+- `semantic_midterm_notes.md`
 
-### 10. `10_concept_drift_analysis.py`
+如果你准备读 `09`，最推荐的顺序是：
 
-作用：
+1. 先看 `semantic_keyword_overview.csv`
+2. 再看 `semantic_context_trajectory.csv`
+3. 最后用 `semantic_context_shift_summary.csv` 提炼结论
 
-- 比较相邻时间段的共现词变化
-- 比较相邻时间段的 semantic neighbors 变化
-- 比较相邻时间段的 topic share 变化
-- 除了按关键词和总体比较，也会额外输出按 IP、按 `IP + 关键词` 的 topic 漂移结果
+不过这几份文件不是同一种东西。有的是总览表，有的是时间轨迹表，有的是人工修正模板。分开理解会更清楚。
+
+### `semantic_keyword_overview.csv` 里会有什么
+
+这个文件最适合当 `09` 的第一入口。它会把每个关键词下比较值得保留的代表词先挑出来，方便你先建立整体印象。
+
+通常会看到这些信息：
+
+- `keyword`：对应的研究关键词
+- `term`：被保留下来的代表词
+- `midterm_rank`：这个词在该关键词内部的大致优先级
+- `term_doc_freq`：这个词命中了多少文本
+- `lift`：它和该关键词绑定得紧不紧
+- `embedding_similarity`：它是否得到了语义邻居结果的支持
+- `midterm_score`：脚本综合频次、区分度和语义支持后算出来的排序分
+- `theme_bucket` / `context_bucket`：这个词最终被归到哪个主题桶、语境桶
+- `example_1_text`、`example_2_text`：代表文本，方便你回头看真实语境
+
+这张表最适合回答：
+
+- 每个关键词大概有哪些代表用法
+- 哪些词更值得拿来命名语义簇
+- 哪些词虽然常见，但语义上其实不稳定
+
+如果你想先抓“这个关键词现在主要在什么语境里被使用”，先看它。
+
+### `semantic_context_trajectory.csv` 里会有什么
+
+这个文件是时间轨迹表。它不是盯着单个词，而是把同一时间段、同一个 `context_bucket` 下的词聚合起来看。
+
+通常会看到这些信息：
+
+- `keyword`
+- `period_label`：时间段标签，比如月度或季度
+- `context_bucket`：这个时间段里占优势的语义簇
+- `doc_count_in_keyword`：该关键词在这一时间段总共覆盖多少文本
+- `context_term_count`：这个语义簇里保留下来多少个代表词
+- `context_term_doc_freq_sum`：这些代表词的总文档频次
+- `context_midterm_score_sum`：这个语义簇累计的综合分数
+- `context_doc_freq_share`：它按词频在该时间段里占多大比重
+- `context_score_share`：它按综合分在该时间段里占多大比重
+- `lead_terms`：这个时间段最能代表该语义簇的几组词
+
+这张表最适合回答：
+
+- 某个语义簇是在什么时候开始变强的
+- 某段时间里哪个语义簇占主导
+- 语义变化到底是某几个词偶然冒头，还是同一类语境整体变强了
+
+如果你做时间分析，`context_score_share` 往往比单看词频更稳一些，因为它不只是机械累加出现次数。
+
+### `semantic_context_shift_summary.csv` 里会有什么
+
+这个文件是轨迹表的浓缩版。它不把每个时间段都展开，而是把一个语义簇从头到尾的变化压缩成几项摘要。
+
+通常会看到这些信息：
+
+- `keyword`
+- `context_bucket`
+- `period_count`：这个语义簇一共持续了多少期
+- `first_period` / `latest_period`：最早和最新出现在哪个时间段
+- `first_context_score_share` / `latest_context_score_share`：最早和最新时占比多少
+- `score_share_change`：从最早到最新，整体是增强还是减弱
+- `peak_period`：它最强的时间段
+- `peak_context_score_share`：峰值时占比多少
+- `avg_context_score_share`：整个观察期里的平均强度
+- `representative_terms_over_time`：这个语义簇在不同时间段里出现过的代表词摘要
+
+这张表最适合做结论提炼，比如：
+
+- 哪些语义簇是长期稳定存在的
+- 哪些只是某一段时间突然爆出来的
+- 哪些语义簇在后期明显增强或衰退
+
+如果你在写中期汇报或章节总结，这张表通常最好用。
+
+### `semantic_period_shortlist.csv` 里会有什么
+
+这个文件更像“按时间段展开的回查表”。它保留的是每个关键词、每个时间段里值得继续读的代表词。
+
+通常会看到这些信息：
+
+- `keyword`
+- `period_label`
+- `term`
+- `midterm_rank`
+- `term_doc_freq`
+- `theme_bucket` / `context_bucket`
+- `example_1_text`、`example_2_text`
+
+它最适合用在这些时候：
+
+- 你已经发现某个时间段有变化，想回头问“那时候到底冒出了哪些词”
+- 你想解释为什么某一时期某个语义簇突然上升
+- 你需要从摘要表回到更具体的词和文本例子
+
+所以它更像“展开细看”的入口，不是最先读的总览表。
+
+### `semantic_bucket_override_template.csv` 里会有什么
+
+这个文件不是直接拿来写结论的，而是拿来改桶的。
+
+通常会看到这些信息：
+
+- `keyword`
+- `period_label`
+- `term`
+- `auto_context_bucket` / `context_bucket`
+- `auto_theme_bucket` / `theme_bucket`
+- `override_context_bucket`
+- `override_theme_bucket`
+- `enabled`
+- `note`
+- `example_1_text`
+
+怎么用它：
+
+1. 先看脚本自动分的桶对不对
+2. 把明显分错的行挑出来
+3. 填到 `override_context_bucket` 或 `override_theme_bucket`
+4. 再复制到 `bert/config/semantic_bucket_overrides.csv`
+5. 重跑整理脚本
+
+它更像一个修正规则的工作台。
+
+### `semantic_midterm_notes.md` 里会有什么
+
+这是脚本自动写出来的一份导读，偏向“把这一轮 `09` 的结果快速讲给人听”。
+
+里面通常会有：
+
+- 这轮候选词和保留词的大致数量
+- 读取顺序建议
+- `09` 的原理摘要
+- 主要噪声来源
+- 各关键词的总体语义摘要
+- 语义簇时间变化的简短概括
+- 如果要做人工修正，应该从哪里下手
+
+这份文件适合：
+
+- 你隔了一段时间回来，需要快速找回上下文
+- 你想先看一版自动生成的读法，再决定进哪个 CSV 深挖
+- 你要先把这轮结果讲给别人听
+
+### 一个更实用的阅读顺序
+
+如果你第一次打开 `09` 的整理结果，推荐这样读：
+
+1. 先看 `semantic_keyword_overview.csv`，建立“每个关键词主要有哪些语义簇”的感觉
+2. 再看 `semantic_context_trajectory.csv`，确认这些语义簇在时间上是怎么起伏的
+3. 用 `semantic_context_shift_summary.csv` 把时间变化压缩成可以直接写进结论的摘要
+4. 如果想解释某个时间段为什么会变，再回头看 `semantic_period_shortlist.csv`
+5. 如果发现自动分桶不理想，再用 `semantic_bucket_override_template.csv` 做人工修正
+6. `semantic_midterm_notes.md` 可以当这一整包结果的导读
+
+## 语义分桶规则怎么调
+
+`09_prepare_semantic_midterm.py` 背后用到两类规则：
+
+- `bert/config/semantic_bucket_rules.json`
+- `bert/config/semantic_bucket_overrides.csv`
+
+怎么理解：
+
+- `rules` 是自动分桶规则
+- `overrides` 是人工修正表
+
+比较实用的工作方式通常是：
+
+1. 先跑一次自动整理
+2. 从 `semantic_bucket_override_template.csv` 里挑出明显不对的项
+3. 复制到 `semantic_bucket_overrides.csv`
+4. 再重跑一遍
+
+这样比一开始就手工全修要省力很多。
+
+## 10. 概念漂移分析：`10_concept_drift_analysis.py`
+
+这一步是在看“相邻时间段之间到底变了什么”。
+
+它会比较：
+
+- 共现词变化
+- semantic neighbors 变化
+- topic share 变化
+
+而且不只是总体比较，也会额外输出：
+
+- 按关键词
+- 按 IP
+- 按 `IP + 关键词`
 
 默认命令：
 
@@ -511,112 +888,87 @@ cp bert/llm_label_local.example.toml bert/llm_label_local.toml
 
 重点输出：
 
-- `bert/artifacts/broad_analysis/drift_analysis/drift_analysis_summary.json`
-- `bert/artifacts/broad_analysis/drift_analysis/readouts/keyword_collocation_drift.csv`
-- `bert/artifacts/broad_analysis/drift_analysis/readouts/keyword_neighbor_drift.csv`
-- `bert/artifacts/broad_analysis/drift_analysis/readouts/topic_drift_by_keyword.csv`
-- `bert/artifacts/broad_analysis/drift_analysis/readouts/topic_drift_overall.csv`
-- `bert/artifacts/broad_analysis/drift_analysis/viz_inputs/topic_share_change_by_keyword.csv`
-- `bert/artifacts/broad_analysis/drift_analysis/viz_inputs/topic_share_change_overall.csv`
-- `bert/artifacts/broad_analysis/drift_analysis/viz_inputs/topic_drift_by_ip.csv`
-- `bert/artifacts/broad_analysis/drift_analysis/viz_inputs/topic_share_change_by_ip.csv`
-- `bert/artifacts/broad_analysis/drift_analysis/viz_inputs/topic_drift_by_ip_and_keyword.csv`
-- `bert/artifacts/broad_analysis/drift_analysis/viz_inputs/topic_share_change_by_ip_and_keyword.csv`
+- `drift_analysis_summary.json`
+- `readouts/keyword_collocation_drift.csv`
+- `readouts/keyword_neighbor_drift.csv`
+- `readouts/topic_drift_by_keyword.csv`
+- `readouts/topic_drift_overall.csv`
+- `viz_inputs/topic_share_change_by_keyword.csv`
 
-## 输出目录规范
+如果你是第一次看 `10`，通常先看：
 
-当前建议固定成下面这套：
+1. `topic_drift_overall.csv`
+2. `topic_drift_by_keyword.csv`
+3. `keyword_neighbor_drift.csv`
 
-- `08` 的当前主结果固定放在 `bert/artifacts/broad_analysis/topic_model_BAAI/`
-- `09` 的当前主结果固定放在 `bert/artifacts/broad_analysis/semantic_analysis/`
-- `10` 的当前主结果固定放在 `bert/artifacts/broad_analysis/drift_analysis/`
-- 每个主结果目录内部统一分成 `readouts/` 和 `viz_inputs/` 两层；前者给人直接看，后者给程序和可视化调用
-- 带日期或一次性批处理的版本，统一放在 `bert/artifacts/broad_analysis/snapshots/<group>/<run_tag>/`
+## `07-10` 的输出目录怎么放
 
-例如，按默认命令顺着跑一遍：
+当前建议固定成这一套：
 
-```bash
-.venv/bin/python bert/08_topic_model_bertopic.py \
-  --output_dir "bert/artifacts/broad_analysis/topic_model_BAAI"
+- `08` 的主结果放 `bert/artifacts/broad_analysis/topic_model_BAAI/`
+- `09` 的主结果放 `bert/artifacts/broad_analysis/semantic_analysis/`
+- `10` 的主结果放 `bert/artifacts/broad_analysis/drift_analysis/`
 
-.venv/bin/python bert/09_keyword_semantic_analysis.py \
-  --output_dir "bert/artifacts/broad_analysis/semantic_analysis"
+每个目录内部再统一分两层：
 
-.venv/bin/python bert/10_concept_drift_analysis.py \
-  --output_dir "bert/artifacts/broad_analysis/drift_analysis"
-```
+- `readouts/`：给人直接看
+- `viz_inputs/`：给程序和可视化继续调用
 
-补充说明：
+如果你跑的是截断月份、临时批次或者 overnight 版本，建议先写到：
 
-- 如果你跑的是截断月份、overnight 或 dated 版本，让脚本把结果先写进 `snapshots/`，再由 `bert/scripts/organize_artifacts.py` 补 canonical 当前目录。
-- `09_prepare_semantic_midterm.py` 默认读取 canonical 的 `semantic_analysis/`；如果你要整理某次 snapshot，显式传它的 `--semantic_dir` 即可。
-- `broad_analysis/overview/manifest.json` 和 `broad_analysis/README.md` 会优先指向这三个 canonical 目录。
+- `bert/artifacts/broad_analysis/snapshots/<group>/<run_tag>/`
 
-## 主题清理建议
+这样不会把当前主结果冲掉。
 
-下面这些是建议，不是默认行为。它们会改变主题结果，建议先单独试一轮，再决定是否固化到主流程。
+## 主题太碎的时候怎么办
 
-### A. 先从训练参数收敛主题数
+这不是 bug，很多时候是参数太松。
 
-对 280 万量级语料来说，`--min_topic_size 30` 往往偏小，容易切出大量碎片 topic。比较稳妥的起点：
+一个更稳妥的处理顺序通常是：
+
+1. 先把聚类收紧，减少碎片 topic
+2. 再做 outlier 回填
+3. 最后再把主题数压到汇报口径
+
+实践上可以先试：
 
 - `--min_topic_size 300`
-- `--hdbscan_min_samples 50` 到 `100`
-- `--nr_topics 60` 或 `auto`
-- `--umap_n_neighbors 50` 到 `100`
+- `--hdbscan_min_samples 50~100`
+- `--umap_n_neighbors 50~100`
+- `--nr_topics 8~15`
 
-如果你的最终目标不是“保留几十上百个细 topic”，而是要得到 `8-15` 个能直接讲趋势的大主题，更接近的实践顺序是：
+如果你一上来就强行把主题压到很少，结果反而可能更难解释。
 
-1. 先把原始聚类收紧，减少碎片：增大 `--min_topic_size`、`--umap_n_neighbors`
-2. 再把 outlier 回填：`--outlier_reduction_strategy c-tf-idf+distributions`
-3. 最后再把主题数压到汇报口径：`--nr_topics 8~15`
+## 什么时候该扩停用词表
 
-这样通常比一上来就强行把 `nr_topics` 设成 `8` 更稳。
+如果你发现这些东西反复跑进 topic 头部，通常就该考虑扩停用词了：
 
-### B. 扩停用词表
+- 粉圈词
+- 游戏词
+- 二手交易词
+- 编号和纯数字
+- 节日和问候语
 
-建议优先检查这些噪声来源是否反复进入头部 topic，再决定是否写进 `bert/config/topic_stopwords.txt`：
+对应文件通常是：
 
-| 噪声类型 | 代表 token | 可考虑加入停用词 |
-|---|---|---|
-| 粉圈 / 艺人 | 饭圈、爱豆、人名 | `王鹤` `宋茜` `杨幂` `王一博` `张泽禹` `丁程鑫` `柳智敏` |
-| 游戏 / 手游 | 玩家、战队、角色 | `第五人格` `光遇` `sky` `xyg` `estar` `ag` `原神` `暖暖` |
-| 二手交易 / 应援 | 周边、抽卡、代肝 | `佛系收` `佛系出` `中转站` `周边` `代肝` `黑市` `挂卡` `抽卡` `应援` |
-| 纯数字 / 编号 | 年份、页码、计量 | `2023` `2024` `2025` `2026` `p1` `p2` `p3` `p4` `500w` `100w` |
-| 日历 / 天气 | 节日、天气、问候 | `新年快乐` `生日快乐` `下雨天` `周末` `国庆` `五一` `双十` |
+- `bert/config/topic_stopwords.txt`
 
-### C. 在 `07 -> 08` 之间加规则过滤
+## `07 -> 08` 之间要不要加规则过滤
 
-如果研究重点是“躺平 / 摆烂 / 佛系”话语，而不是交易黑话或游戏流量，建议在 `07` 产物进入 `08` 之前做一次轻量过滤：
+如果你的研究重点是“躺平 / 摆烂 / 佛系”的社会语义，而不是交易黑话、抽卡帖或游戏流量帖，那确实值得考虑在 `07` 和 `08` 之间加一层轻过滤。
 
-- 命中 `(佛系收|佛系出|中转|抽卡|代肝|黑市|挂卡|求扩)` 的帖子，直接剔除或只抽样一部分进入 topic model
-- 关键词最好作为独立 token 判断，而不是纯子串匹配；中文场景可以先分词，再判断 token 是否命中
+例如：
 
-### D. 训练后降噪
+- `佛系收`
+- `佛系出`
+- `中转`
+- `抽卡`
+- `代肝`
+- `黑市`
 
-如果不想重跑 embedding，可以优先考虑 BERTopic 自带的后处理：
+这些内容往往会在主题里造成很强的噪声。
 
-- `topic_model.reduce_outliers(docs, topics, strategy="embeddings")`
-- `topic_model.reduce_topics(docs, nr_topics=50)`
-- 对明显重复的簇再做手工 `merge_topics`
-
-### E. Seeded BERTopic
-
-如果你最关心的是“躺平 / 摆烂 / 佛系”三类姿态，而不是让生活流 topic 自然冒出来，可以考虑显式 seed：
-
-```python
-BERTopic(
-    seed_topic_list=[
-        ["躺平", "内卷", "加班", "不想努力", "摸鱼"],
-        ["摆烂", "破罐破摔", "随便", "不想学", "放弃"],
-        ["佛系", "随缘", "无所谓", "淡定", "看开"],
-    ]
-)
-```
-
-这样更适合研究导向的命题，但代价是主题结构会更“带假设”。
-
-## Windows 机器上的注意事项
+## Windows 上要注意什么
 
 `08` / `09` 会额外依赖：
 
@@ -624,27 +976,29 @@ BERTopic(
 - `sentence-transformers`
 - `jieba`
 
-它们已经写在根目录 [`requirements.txt`](/Users/apple/Local/fdurop/code/result/requirements.txt) 里，但第一次运行 embedding 模型时，通常还会下载模型权重。
+它们已经写在根目录 `requirements.txt` 里，但第一次运行通常还会下载模型权重。
 
-如果你的 Windows 机器联网：
+如果 Windows 机器离线：
 
-- 直接在已安装 `requirements.txt` 的环境里运行即可。
+- 先把 embedding 模型缓存好
+- 或者直接把模型目录拷到本地
+- 运行时加 `--embedding_model <本地目录>`
+- 再加 `--local_files_only`
 
-如果你的 Windows 机器离线：
+更细的 Windows 说明请看 [`../WINDOWS_SETUP.md`](../WINDOWS_SETUP.md)。
 
-- 先把 embedding 模型缓存好，或者把模型目录拷到本地。
-- 运行 `08` / `09` 时把 `--embedding_model` 指到本地目录。
-- 再加上 `--local_files_only`，避免脚本尝试联网下载。
+## 最后给一个最实用的判断标准
 
-## 最后建议
+如果你不知道现在该跑到哪一步，先问自己：
 
-更稳妥的习惯是：
+- 我现在是在“准备标签”吗？
+- 我现在是在“训练模型”吗？
+- 我现在是在“读全量语义结果”吗？
 
-1. 先把主流程跑到 `data/processed/text_dedup/`。
-2. 用 `01` 抽样。
-3. 用 `02` 生成预标注草稿。
-4. 人工审核。
-5. 单标签任务走 `03 -> 04`，双标签任务直接走 `05`。
-6. 用 `05` 产出的 `broad/best_model` 跑 `06` 全量预测。
-7. 再顺序跑 `07`、`08`、`09`、`10`。
-8. 需要换测试集或换分析口径时，只改命令参数，不改脚本逻辑。
+对应关系是：
+
+- 准备标签：看 `01-03`
+- 训练模型：看 `04-06`
+- 读 broad 结果：看 `07-10`
+
+这样会比按文件名硬记流程更不容易乱。

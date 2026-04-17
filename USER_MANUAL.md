@@ -1,28 +1,81 @@
 # 主流程使用手册
 
-本手册只负责说明项目的主流程，也就是从 `raw/` 原始 CSV 到 `data/processed/`、`data/state/`、`data/reports/`、`data/exports/` 的这一段。抽样、预标注、训练、预测和 `07-10` 分析链请看 [bert/README.md](/Users/apple/Local/fdurop/code/result/bert/README.md)。
+这份文档只讲主流程，也就是把 `raw/` 里的原始微博 CSV 整理成后续可抽样、可训练、可分析的标准数据。
 
-## 1. 目录约定
+如果你关心的是抽样、预标注、训练和 `07-10` 分析链，请直接看 [`bert/README.md`](./bert/README.md)。
 
-当前主流程依赖的核心目录如下：
+## 这份手册解决什么问题
 
-- 唯一源数据目录：`raw/`
-- 主流程入口：`main.py`
-- 主流程处理目录：`data/processed/`
-- 主流程状态目录：`data/state/`
-- 主流程报告目录：`data/reports/`
-- 主流程导出目录：`data/exports/`
-- 抽样和标注数据目录：`bert/data/`
-- 训练和分析产物目录：`bert/artifacts/`
+主流程听起来像“数据预处理”，但它其实做了三件很具体的事：
 
-目录结构可以粗看成：
+1. 统一把散落在 `raw/` 里的 CSV 找出来
+2. 把原始微博整理成字段比较稳定的 parquet
+3. 用增量状态避免每次都从头重跑
+
+跑完之后，最关键的产物是：
+
+- `data/processed/text_dedup/`
+
+后面的抽样、训练和 broad 分析，基本都从这里接。
+
+## 先理解主流程在干什么
+
+主流程不是“一口气把所有数据处理到底”，而是分三层往前走：
+
+1. `merged_dedup`
+2. `preprocessed`
+3. `text_dedup`
+
+它们分别代表：
+
+### `merged_dedup`
+
+把 `raw/` 中识别到的 CSV 合并起来，补上来源信息，再按 `id` 去重。
+
+可以把它理解成：
+
+- “哪些微博进来了”
+- “原始字段大致长什么样”
+- “每条微博来自哪个源文件”
+
+### `preprocessed`
+
+在 `merged_dedup` 的基础上做文本清洗。
+
+这一步主要是在做：
+
+- 统一文本列
+- 处理 emoji
+- 保留后面训练和分析真正会用到的文本内容
+
+### `text_dedup`
+
+按清洗后的文本再去一次重。
+
+原因很简单：微博里经常有不同 `id` 但正文几乎一样的内容。如果不做文本去重，后面抽样和分析会被重复文本拖偏。
+
+一句话总结：
+
+- `merged_dedup` 解决“同一条微博别重复算两次”
+- `text_dedup` 解决“同一段话别重复算很多次”
+
+## 目录约定
+
+主流程真正会碰到的目录主要是这些：
+
+- `raw/`：唯一正式输入目录
+- `data/processed/`：处理结果
+- `data/state/`：增量状态
+- `data/reports/`：运行报告
+- `data/exports/`：导出的 CSV
+- `scripts/pipeline/`：主流程脚本
+- `main.py`：统一入口
+
+大致结构如下：
 
 ```text
 result/
-├── raw/                         源数据
-├── archive/
-│   ├── raw_data_legacy/         历史源数据归档
-│   └── reports_legacy/          历史报告归档
+├── raw/
 ├── data/
 │   ├── processed/
 │   │   ├── merged_dedup/
@@ -33,36 +86,18 @@ result/
 │   └── exports/
 ├── scripts/
 │   └── pipeline/
-├── bert/
-│   ├── data/
-│   ├── artifacts/
-│   └── README.md
 ├── main.py
 └── USER_MANUAL.md
 ```
 
-说明：
+补一句：
 
-- `bert/data/` 和 `bert/artifacts/` 不属于主流程内部目录，但会消费主流程生成的 `text_dedup`。
-- `archive/` 下的内容主要是历史归档，不参与当前正式流程。
+- `bert/data/` 和 `bert/artifacts/` 会用到主流程产物，但不属于主流程本身
+- `archive/` 里的内容一般是历史归档，不参与当前正式流程
 
-## 2. 命令写法
+## 原始数据怎么放
 
-本仓库默认使用根目录下的 `.venv`。下面示例统一采用 macOS / Linux 写法：
-
-```bash
-.venv/bin/python ...
-```
-
-如果你在 Windows PowerShell，请把它替换为：
-
-```powershell
-.\.venv\Scripts\python.exe ...
-```
-
-## 3. 源数据要求
-
-主流程从 `raw/` 递归扫描 CSV，识别模式如下：
+主流程会递归扫描 `raw/` 下的 CSV，识别模式大致是：
 
 `.../csv/{keyword}/**/*.csv`
 
@@ -72,69 +107,71 @@ result/
 - `raw/2/csv/佛系/2025/06/08.csv`
 - `raw/结果文件/csv/chatgpt/2025/7/31.csv`
 
-识别逻辑：
+脚本会按下面的规则理解路径：
 
-- `csv` 目录的下一层作为 `keyword`
-- 如果后续目录中存在年、月，脚本会提取它们用于排序
-- 文件名数字部分会作为日排序参考
+- `csv` 的下一层目录，当作 `keyword`
+- 后面的年、月目录如果存在，会被提取出来参与排序
+- 文件名里的数字会被当作日期排序参考
 
-原始数据路径最好能稳定反映关键词来源，否则后续 `keyword` 元信息会不完整。
+这意味着一件事：
 
-## 4. 主流程三层产物
+原始文件路径最好别太随意。哪怕文件内容一样，路径里如果没有稳定的关键词层级，后面补出来的 `keyword` 元信息就会不完整。
 
-主流程会依次生成三层结果：
+## 统一命令入口
 
-1. `merged_dedup`
-2. `preprocessed`
-3. `text_dedup`
+统一入口是 [`main.py`](./main.py)。
 
-含义如下：
+仓库默认使用根目录下的 `.venv`：
 
-- `merged_dedup`：从 `raw/` 读取原始 CSV，补充 `keyword` 和 `source_file`，按 `id` 增量去重后的主表
-- `preprocessed`：对新增去重数据做文本清洗后的结果
-- `text_dedup`：对预处理结果按 `cleaned_text` 再做增量文本去重后的结果
+- macOS / Linux：`.venv/bin/python`
+- Windows PowerShell：`.\.venv\Scripts\python.exe`
 
-其中 `data/processed/text_dedup/` 是后续抽样、训练和分析最常用的输入。
+下面示例统一按 macOS / Linux 写。Windows 下只需要把解释器路径替换掉。
 
-## 5. 统一命令入口
+## 四个最常用命令
 
-统一入口文件是 [`main.py`](/Users/apple/Local/fdurop/code/result/main.py)。
-
-### 5.1 增量运行
+### 1. 增量运行：`run`
 
 ```bash
 .venv/bin/python main.py
 .venv/bin/python main.py run
 ```
 
-作用：
+这是平时最常用的命令。
 
-1. 扫描 `raw/` 下所有可识别 CSV
+它会做这些事：
+
+1. 扫描 `raw/` 下所有能识别的 CSV
 2. 读取 `data/state/raw_manifest.json`
-3. 只处理新增或变更文件
+3. 找出新增或修改过的文件
 4. 对新增数据按 `id` 去重
-5. 对新增去重数据做预处理
-6. 对新增预处理结果按 `cleaned_text` 去重
-7. 更新状态文件和报告
+5. 做文本清洗
+6. 按 `cleaned_text` 再做文本去重
+7. 更新状态文件和运行报告
 
-适用场景：
+什么时候用：
 
-- 新增了原始 CSV
-- 修改了部分 raw 文件
-- 想在现有处理结果基础上继续追加
+- 新加了原始 CSV
+- 改了少量原始文件
+- 想在现有结果上继续追加
 
-### 5.2 全量重建
+什么时候别急着用它：
+
+- 你改了清洗逻辑
+- 你怀疑旧状态文件已经不可信
+- 你想让整个历史结果重新按最新规则生成
+
+这时候更适合用 `full`。
+
+### 2. 全量重建：`full`
 
 ```bash
 .venv/bin/python main.py full
 ```
 
-作用：
+这个命令会把主流程自己的核心产物和状态清掉，然后从 `raw/` 全量重算。
 
-- 清理主流程自己的核心产物与状态文件
-- 从 `raw/` 全量重新计算
-
-会重建的目录/文件：
+会重建的内容：
 
 - `data/processed/merged_dedup/`
 - `data/processed/preprocessed/`
@@ -148,36 +185,41 @@ result/
 不会动的内容：
 
 - `raw/`
-- 仓库中的代码文件
+- 仓库代码
 - `bert/data/`
 - `bert/artifacts/`
 - `data/processed/text_dedup_predicted*/`
-- `data/processed/` 下其他不属于主流程三层产物的目录
+- `data/processed/` 里其他不属于主流程三层产物的目录
 
-适用场景：
+什么时候用：
 
-- 修改了清洗逻辑
-- 状态文件不可信
-- 希望完全重算历史数据
+- 你改了清洗逻辑
+- 状态文件可能坏了
+- 历史数据要按新规则重算
 
-如果你希望 `06-10` 的预测或分析结果也和这次 full rebuild 保持一致，需要在 `main.py full` 之后重新运行对应脚本，或者手动清理那些下游目录。
+要注意的一点：
 
-### 5.3 查看状态
+`full` 只负责主流程重建，不会自动帮你重跑后面的预测和分析。也就是说，如果你希望 `06-10` 的结果和这次重建保持一致，需要自己再跑一次下游脚本。
+
+### 3. 查看状态：`status`
 
 ```bash
 .venv/bin/python main.py status
 ```
 
-输出信息包括：
+这个命令适合在真正开跑前先看一眼。
 
-- 已索引 raw 文件数
-- `merged_dedup` 行数与分片数
-- `preprocessed` 分片数
-- `text_dedup` 行数与分片数
+通常会告诉你：
+
+- 当前索引了多少 raw 文件
+- `merged_dedup` 有多少行、多少分片
+- `preprocessed` 和 `text_dedup` 的分片情况
 - 最近一次运行模式和结束时间
-- 关键路径
+- 关键路径现在指向哪里
 
-### 5.4 导出 CSV
+如果你不确定仓库是不是已经处理过一轮，先跑这个最稳。
+
+### 4. 导出 CSV：`export-csv`
 
 ```bash
 .venv/bin/python main.py export-csv
@@ -190,31 +232,36 @@ result/
 - `data/exports/merged_dedup.csv`
 - `data/exports/text_dedup.csv`
 
-说明：
+这一步的意义不是替代 parquet，而是：
 
-- 主流程内部存储仍然是 parquet
-- CSV 只用于交换、人工查看或兼容下游工具
+- 方便人工查看
+- 方便发给别的工具
+- 方便和不支持 parquet 的下游流程对接
 
-## 6. 主流程相关脚本
+如果你只是继续在本项目里跑脚本，优先还是用 parquet。
 
-主流程相关脚本集中放在 [`scripts/pipeline/`](/Users/apple/Local/fdurop/code/result/scripts/pipeline)：
+## 主流程相关脚本
 
-- [scripts/pipeline/s01_core.py](/Users/apple/Local/fdurop/code/result/scripts/pipeline/s01_core.py)
-- [scripts/pipeline/s02_merge.py](/Users/apple/Local/fdurop/code/result/scripts/pipeline/s02_merge.py)
-- [scripts/pipeline/s03_dedup.py](/Users/apple/Local/fdurop/code/result/scripts/pipeline/s03_dedup.py)
-- [scripts/pipeline/s04_preprocess.py](/Users/apple/Local/fdurop/code/result/scripts/pipeline/s04_preprocess.py)
+主流程脚本集中在 [`scripts/pipeline/`](./scripts/pipeline/)：
 
-一般情况下优先使用 [`main.py`](/Users/apple/Local/fdurop/code/result/main.py)。只有在你明确想从某个阶段单独查看或调试时，才需要直接跑这些分组脚本。
+- [`scripts/pipeline/s01_core.py`](./scripts/pipeline/s01_core.py)
+- [`scripts/pipeline/s02_merge.py`](./scripts/pipeline/s02_merge.py)
+- [`scripts/pipeline/s03_dedup.py`](./scripts/pipeline/s03_dedup.py)
+- [`scripts/pipeline/s04_preprocess.py`](./scripts/pipeline/s04_preprocess.py)
 
-## 7. 内部数据说明
+大多数情况下，直接用 `main.py` 就够了。
 
-### 7.1 `merged_dedup`
+只有在这些场景下，才建议直接进脚本层：
 
-目录：
+- 你要调试某个阶段
+- 你想确认某个处理环节到底做了什么
+- 你在改主流程代码，需要单独验证一个步骤
 
-- `data/processed/merged_dedup/part-*.parquet`
+## 产物分别长什么样
 
-常见列：
+### `data/processed/merged_dedup/`
+
+常见列包括：
 
 - `id`
 - `微博正文`
@@ -227,18 +274,16 @@ result/
 - `ip`
 - `source_file`
 
-说明：
+你可以把它理解成“按 `id` 去重后的主表”。
 
-- 这是按 `id` 去重后的主表
+这里最值得注意的是：
+
 - `source_file` 记录原始文件相对路径
+- `keyword` 主要来自目录结构，而不是正文自动猜测
 
-### 7.2 `preprocessed`
+### `data/processed/preprocessed/`
 
-目录：
-
-- `data/processed/preprocessed/part-*.parquet`
-
-常见列：
+常见列包括：
 
 - `id`
 - `cleaned_text`
@@ -253,25 +298,29 @@ result/
 - `ip`
 - `source_file`
 
-说明：
+最关键的两个文本列：
 
-- `cleaned_text`：emoji 统一替换成 `[emoji]`
-- `cleaned_text_with_emoji`：emoji 转成文字描述
+- `cleaned_text`：emoji 会统一替换成 `[emoji]`
+- `cleaned_text_with_emoji`：emoji 会转成文字描述
 
-### 7.3 `text_dedup`
+如果你后面是做分类任务，通常先用 `cleaned_text`。
 
-目录：
+### `data/processed/text_dedup/`
 
-- `data/processed/text_dedup/part-*.parquet`
+这是后面最常被当作标准输入的目录。
 
-说明：
+它的意思是：
 
-- 基于 `preprocessed` 的 `cleaned_text` 做增量文本去重
-- 这是后续抽样、标注、训练和 broad 分析链的标准输入
+- 基于 `preprocessed` 的 `cleaned_text` 再做一轮去重
+- 尽量避免重复正文在抽样和分析里反复出现
 
-## 8. 状态文件说明
+如果你只记住一个目录，记住这个就行。
 
-### 8.1 `raw_manifest.json`
+## 状态文件是干什么的
+
+主流程能增量运行，靠的就是 `data/state/` 里的这些文件。
+
+### `raw_manifest.json`
 
 路径：
 
@@ -280,9 +329,9 @@ result/
 作用：
 
 - 记录每个 raw CSV 的 `size`、`mtime_ns`、`keyword`
-- 用于判断哪些文件发生了变化
+- 用来判断哪些文件发生了变化
 
-### 8.2 `id_hashes.txt`
+### `id_hashes.txt`
 
 路径：
 
@@ -290,10 +339,10 @@ result/
 
 作用：
 
-- 保存已出现 `id` 的哈希
-- 用于增量 `id` 去重
+- 保存已经见过的 `id` 哈希
+- 用来做增量 `id` 去重
 
-### 8.3 `text_hashes.txt`
+### `text_hashes.txt`
 
 路径：
 
@@ -301,10 +350,10 @@ result/
 
 作用：
 
-- 保存已出现 `cleaned_text` 的哈希
-- 用于增量文本去重
+- 保存已经见过的 `cleaned_text` 哈希
+- 用来做增量文本去重
 
-### 8.4 `pipeline_last_run.json`
+### `pipeline_last_run.json`
 
 路径：
 
@@ -312,56 +361,56 @@ result/
 
 作用：
 
-- 记录最近一次运行模式、处理文件数、写出分片、累计行数等
+- 记录最近一次运行模式、处理文件数、写出分片和累计行数
 
-## 9. 和下游流程的衔接
+如果你在排查“为什么这次没有处理新文件”，优先看 `raw_manifest.json` 和 `pipeline_last_run.json`。
 
-主流程结束后，后续一般从这里开始：
+## 主流程和下游怎么衔接
 
-1. 用 [`bert/01_stratified_sampling.py`](/Users/apple/Local/fdurop/code/result/bert/01_stratified_sampling.py) 从 `data/processed/text_dedup/*.parquet` 抽样
-2. 用 [`bert/02_llm_label_local.py`](/Users/apple/Local/fdurop/code/result/bert/02_llm_label_local.py) 生成预标注草稿
-3. 人工审核样本
+主流程跑完之后，后面一般这么接：
+
+1. 用 `bert/01_stratified_sampling.py` 从 `data/processed/text_dedup/*.parquet` 抽样
+2. 用 `bert/02_llm_label_local.py` 生成预标注草稿
+3. 人工审核
 4. 用 `04` 或 `05` 训练模型
 5. 用 `06` 对全量 parquet 做预测
 6. 顺序运行 `07-10`
 
-这些步骤的详细命令、参数和输出见 [bert/README.md](/Users/apple/Local/fdurop/code/result/bert/README.md)。
+这一段的细节请看 [`bert/README.md`](./bert/README.md)。
 
-## 10. 迁移后的注意事项
+## 常见情况和处理建议
 
-以下旧结构已经删除或停止使用：
+### 我平时到底该用 `run` 还是 `full`？
 
-- 旧的 `step_01` 到 `step_07`
-- 旧的 `count_*` 脚本
-- 旧的 `bert_classify/` 训练预测结构
-- 旧的 `project_io.py`
+- 大多数日常追加：`run`
+- 改过清洗逻辑、怀疑状态脏了：`full`
 
-以下旧目录如果还存在，只是历史产物保留，不再参与当前主流程：
+如果你开始犹豫，先问自己一句：
 
-- 根目录 `preprocessed/`
-- 根目录 `outputs/`
-- `archive/reports_legacy/`
-- 根目录 `logs/`
+“我想追加新数据，还是想把旧结果推倒重来？”
 
-## 11. 常见问题
+前者用 `run`，后者用 `full`。
 
-### 11.1 什么情况下用 `run`，什么情况下用 `full`？
+### 为什么项目内部主要用 parquet，不直接用 CSV？
 
-- 平时追加新数据：`run`
-- 修改清洗逻辑或怀疑状态不一致：`full`
+因为这里的主流程和下游脚本本来就是按 parquet 组织的。CSV 主要拿来交换、人工看、或者给别的工具兼容。
 
-### 11.2 为什么内部结果都写到 `data/processed/`？
+### 为什么主流程不再从旧目录里的 CSV 开始？
 
-这是当前项目使用的标准结构，便于维护增量状态、处理结果和统一导出。
+因为现在正式入口就是 `raw/`。其他历史目录里的 CSV 就算还在，也不应该再被当成新的正式输入。
 
-### 11.3 为什么主流程不再从 `data/` 里的旧 CSV 开始？
+### 根目录还有 `outputs/`、`preprocessed/`、`logs/`，是不是现在还在用？
 
-因为当前主流程默认只从 `raw/` 读取原始数据，其他历史目录中的旧 CSV 已不再作为正式输入入口。
+通常不是。它们更多是早期实验或历史遗留。当前正式主流程主要围绕 `raw/` 和 `data/`。
 
-### 11.4 为什么根目录还有 `outputs/`、`preprocessed/`？
+### 发现结果不对，先查哪里？
 
-那是早期实验阶段保留下来的历史产物。当前主流程不再使用它们，也不需要再向这些目录写入。
+建议按这个顺序查：
 
-### 11.5 是否要求 parquet 依赖？
+1. 先跑 `main.py status`
+2. 看 `data/reports/pipeline_last_run.json`
+3. 看 `data/state/raw_manifest.json`
+4. 抽一两个 parquet 分片确认字段和行数
+5. 如果你改过处理逻辑，再考虑跑 `main.py full`
 
-是。当前主流程内部存储就是 parquet。
+这样排查通常比直接重跑更快。

@@ -1,82 +1,155 @@
 # 微博“躺平 / 摆烂 / 佛系”语义研究项目
 
-本仓库用于构建和分析一个围绕“躺平 / 摆烂 / 佛系”的微博语料库。项目把大规模文本处理、人工审核、双标签分类和后续语义分析串成一条可复用的研究流程，目标不是简单统计关键词出现次数，而是尽量识别这些词在微博正文中是否承担了与研究相关的语义功能，并进一步分析它们在不同时间段中的语义分布和变化。
+这个仓库不是拿关键词做简单计数，而是想尽量回答一个更实际的问题：
 
-## 研究关注
+同样写了“躺平”“摆烂”“佛系”的微博，哪些是真的在表达某种心态、立场和评价，哪些只是口头禅、标题、交易黑话、剧情设定，或者顺手一提。
 
-项目当前围绕三组关键词组织语料：
+所以整个项目被拆成两段：
+
+1. 主流程：先把 `raw/` 里的原始 CSV 整理成能继续处理的标准语料。
+2. 下游流程：再抽样、预标注、人工审核、训练分类器，并把模型打到全量语料上做分析。
+
+这份 `README.md` 只做总览和导航。具体怎么跑、哪里容易出问题，请看对应子文档。
+
+## 这个项目在研究什么
+
+当前语料围绕三组关键词展开：
 
 - `躺平`
 - `摆烂`
 - `佛系`
 
-核心问题包括：
+更具体一点，项目主要关心这些事：
 
-1. 这些词在微博中进入了哪些语义场景。
-2. 这些词的主题板块、共现词和语义邻域如何变化。
-3. 当这些词成为现实行为方式或评价框架时，文本表达了怎样的心态与立场。
-4. 相关表达在时间和地域层面呈现出怎样的分布差异。
+- 这些词在微博里到底落进了哪些语义场景
+- 它们是日常口语、生活方式、评价框架，还是某种特定圈层黑话
+- 不同时间段里，语义重点有没有变化
+- 在地域和时间维度上，哪些表达在扩张，哪些在收缩
 
 ## 两套语料边界
 
-项目同时构造两套语料，以承接两类分析任务。
+为了后面分析不打架，项目把语料边界分成两套。
 
-### 宽松版语料（broad）
+### `broad`：宽口径
 
-宽松版语料服务于概念漂移、主题结构和语义重心演化分析。这里保留的是在正文中承担可解释语义的用法，包括：
+这套语料是给“概念怎么漂移、语义怎么分布”这种问题用的。只要关键词在正文里确实承担了某种可解释的语义，通常都可以留下来。
 
-- 字面“躺平”、休息、放松等原始用法
-- 日常摆烂、临时松懈、生活态度表达
-- “佛系”作为风格、状态、做事方式的表达
-- 股票、游戏、饭圈等场景中的语义转义
+比如：
+
+- 字面“躺平”、休息、放松
+- 日常“摆烂”、松懈、状态不好
+- “佛系”作为风格、做事方式、相处态度
+- 股票、游戏、饭圈等语境里的转义用法
 - 对群体、组织、机构的评价性使用
 
-宽松版会排除纯标签、纯标题、纯宣传、小说剧情设定、广告资源帖以及缺乏正文语义的碎片文本。
+但像下面这些，一般会排掉：
 
-### 严格版语料（strict）
+- 只有标题和口号，没有正文内容
+- 纯广告、资源帖、抽卡帖
+- 小说剧情设定
+- 只带了关键词，但正文没有实际语义
 
-严格版语料服务于社会心态、立场和评价框架研究。这里保留的是把“躺平 / 摆烂 / 佛系”作为现实行为方式或评价框架核心来表达的文本，例如：
+### `strict`：严口径
 
-- 低投入、放弃争取、被动接受、自保、减少竞争
-- 对他人、群体、机构、组织“不作为”或“摆烂”的评价
-- 围绕这些标签本身展开的现实讨论
+这套语料是给“社会心态、现实行为方式、评价框架”这种更窄的问题用的。重点是：关键词是不是这条微博真正的意思核心。
 
-严格版不收录字面休息、佛系性格描述、交易黑话、标题口号、剧情设定，以及只是顺带提及关键词、但关键词不构成全文心态核心的文本。
+比如：
+
+- 低投入、少争取、被动接受、自保
+- 对个人、组织、机构“不作为”“摆烂”的评价
+- 围绕“躺平 / 摆烂 / 佛系”本身展开的现实讨论
+
+一般不会收：
+
+- 字面休息
+- 单纯性格描述
+- 股票黑话、交易黑话
+- 口号式标题
+- 只是顺带提及关键词的文本
+
+一句话理解：
+
+- `broad` 更适合看“这个词都被怎么用”
+- `strict` 更适合看“这个词是不是在表达一种现实态度或评价”
+
+## 仓库怎么读
+
+如果第一次进这个仓库，建议按这个顺序看：
+
+1. 先看这份 `README.md`，知道项目分几段、文档怎么分工
+2. 再看 [`USER_MANUAL.md`](./USER_MANUAL.md)，把 `raw/ -> data/processed/` 这一段跑通
+3. 如果要做抽样、训练、预测和分析，再看 [`bert/README.md`](./bert/README.md)
+4. 如果你在 Windows 上跑，补看 [`WINDOWS_SETUP.md`](./WINDOWS_SETUP.md)
+
+## 文档分工
+
+### 根目录 `README.md`
+
+这份文档只回答三个问题：
+
+- 这个项目是干什么的
+- 仓库分成哪几段
+- 你下一步该看哪份文档
+
+### `USER_MANUAL.md`
+
+这份文档只讲主流程，也就是：
+
+- `raw/` 里的 CSV 怎么被识别
+- `main.py run / full / status / export-csv` 分别干什么
+- `data/processed/`、`data/state/`、`data/reports/` 里会产生什么
+- 平时该什么时候增量跑，什么时候全量重建
+
+### `bert/README.md`
+
+这份文档只讲下游流程，也就是：
+
+- 从 `text_dedup` 抽样
+- LLM 预标注
+- 人工审核
+- 单标签 / 双标签训练
+- 全量预测
+- `07-10` 的 broad 分析链
+
+### `WINDOWS_SETUP.md`
+
+这份文档只讲 Windows 和默认环境不一样的地方：
+
+- 虚拟环境
+- CUDA 版 PyTorch
+- 本地或离线模型
+- Windows 下最常见的命令和报错场景
 
 ## 仓库结构
 
 ```text
 result/
 ├── raw/                         原始微博 CSV
-├── data/                        主流程生成的中间数据与导出结果
-│   ├── processed/               parquet 主产物
+├── data/
+│   ├── processed/               主流程生成的 parquet
 │   ├── exports/                 导出的 CSV
 │   ├── reports/                 运行报告
 │   └── state/                   增量处理状态
-├── scripts/pipeline/            原始数据整理与预处理脚本
-├── bert/                        抽样、标注、训练、预测、分析脚本
-│   ├── data/                    抽样表、审核表等人工处理中间文件
-│   └── artifacts/               模型、预测结果、分析结果
+├── scripts/pipeline/            主流程脚本
+├── bert/                        抽样、标注、训练、预测、分析
+│   ├── data/                    抽样表、审核表等中间文件
+│   ├── artifacts/               模型、预测结果、分析结果
+│   └── README.md
 ├── main.py                      主流程统一入口
-├── README.md                    项目入口说明
-├── USER_MANUAL.md               主流程手册
-├── bert/README.md               抽样、训练与分析手册
-└── WINDOWS_SETUP.md             Windows 环境差异说明
+├── README.md
+├── USER_MANUAL.md
+└── WINDOWS_SETUP.md
 ```
 
-如果按工作流来理解：
+如果按实际工作来理解：
 
-1. [`main.py`](/Users/apple/Local/fdurop/code/result/main.py) 和 [`scripts/pipeline/`](/Users/apple/Local/fdurop/code/result/scripts/pipeline) 负责把原始 CSV 变成可抽样的 `data/processed/text_dedup/`。
-2. [`bert/01_stratified_sampling.py`](/Users/apple/Local/fdurop/code/result/bert/01_stratified_sampling.py) 到 [`bert/05_train_dual_label_classifier.py`](/Users/apple/Local/fdurop/code/result/bert/05_train_dual_label_classifier.py) 负责抽样、预标注、人工审核后的训练。
-3. [`bert/06_predict_bert_classifier.py`](/Users/apple/Local/fdurop/code/result/bert/06_predict_bert_classifier.py) 负责把训练好的模型打到全量语料。
-4. [`bert/07_build_broad_analysis_base.py`](/Users/apple/Local/fdurop/code/result/bert/07_build_broad_analysis_base.py) 到 [`bert/10_concept_drift_analysis.py`](/Users/apple/Local/fdurop/code/result/bert/10_concept_drift_analysis.py) 负责 broad 语料的分析链路。
+- `main.py` 负责把原始数据整理成可抽样的标准输入
+- `bert/01-06` 负责从样本走到全量预测
+- `bert/07-10` 负责 broad 语料的后续分析
 
-## 快速开始
+## 最短上手路径
 
-仓库默认使用根目录下的 `.venv`。下面示例优先使用显式解释器路径：
-
-- macOS / Linux：`.venv/bin/python`
-- Windows PowerShell：`.\.venv\Scripts\python.exe`
+仓库默认使用根目录下的 `.venv`。
 
 首次创建环境：
 
@@ -96,16 +169,7 @@ py -3.11 -m venv .venv
 .\.venv\Scripts\python.exe -m pip install -r requirements.txt
 ```
 
-最短工作流：
-
-1. 运行主流程，把 `raw/` 处理为 `data/processed/text_dedup/`
-2. 从 `text_dedup` 抽样并生成预标注草稿
-3. 人工审核样本
-4. 用审核后的 CSV/XLSX 训练单标签或双标签模型
-5. 对全量语料做预测
-6. 顺序运行 `07-10` 的 broad 分析链
-
-常用命令示例：
+最短命令链：
 
 ```bash
 .venv/bin/python main.py status
@@ -116,38 +180,53 @@ py -3.11 -m venv .venv
 .venv/bin/python bert/06_predict_bert_classifier.py --help
 ```
 
-Windows 下把 `.venv/bin/python` 替换为 `.\.venv\Scripts\python.exe` 即可。
+Windows 下把 `.venv/bin/python` 换成 `.\.venv\Scripts\python.exe`。
 
-补充提醒：
+## 一条完整流程长什么样
 
-- `bert/02_llm_label_local.py` 在首次运行前，通常需要先准备 `bert/llm_label_local.toml` 或相应环境变量/API key；直接裸跑很可能卡在 provider 配置上。
-- 推荐先复制 `bert/llm_label_local.example.toml` 再修改；具体写法见 [bert/README.md](/Users/apple/Local/fdurop/code/result/bert/README.md) 和 [WINDOWS_SETUP.md](/Users/apple/Local/fdurop/code/result/WINDOWS_SETUP.md)。
+实际工作里，最常见的是这条线：
 
-## 文档导航
+1. 把原始微博 CSV 放到 `raw/`
+2. 跑 `main.py run`，得到 `data/processed/text_dedup/`
+3. 用 `bert/01_stratified_sampling.py` 抽样
+4. 用 `bert/02_llm_label_local.py` 做预标注草稿
+5. 人工审核
+6. 用 `04` 或 `05` 训练分类器
+7. 用 `06` 把模型打到全量语料
+8. 继续跑 `07-10` 做 broad 分析
 
-- [USER_MANUAL.md](/Users/apple/Local/fdurop/code/result/USER_MANUAL.md)：`raw/ -> data/processed/` 主流程、状态文件、导出逻辑
-- [bert/README.md](/Users/apple/Local/fdurop/code/result/bert/README.md)：`01-10` 抽样、预标注、训练、预测和 broad 分析链
-- [WINDOWS_SETUP.md](/Users/apple/Local/fdurop/code/result/WINDOWS_SETUP.md)：Windows + NVIDIA 环境差异、GPU 与离线模型说明
+如果你现在只是想确认主流程是否正常，读 `USER_MANUAL.md` 就够了。
 
-## 当前代码侧重点
+如果你现在已经有审核过的标注表，直接去读 `bert/README.md` 会更省时间。
 
-当前仓库里已经落地的分析脚本主要围绕 broad 语料展开，即：
+## 现在仓库里最成熟的是哪一段
+
+当前已经比较成体系的是这条 broad 分析链：
 
 - `07_build_broad_analysis_base.py`
 - `08_topic_model_bertopic.py`
 - `09_keyword_semantic_analysis.py`
 - `10_concept_drift_analysis.py`
 
-strict 语料主要用于更严格的样本边界控制和下游社会心态研究入口；如果你只看现成脚本，优先从 broad 链路理解仓库结构会更直接。
+也就是说：
 
-## 仓库中通常不包含的内容
+- `strict` 更像边界更严的研究入口
+- `broad` 是目前最适合直接往下接分析脚本的一套结果
 
-为避免仓库过大，以下内容通常不上传到 GitHub：
+## 仓库里通常不会带什么
+
+为了避免仓库太大，下面这些内容通常不会上传：
 
 - `raw/`
 - `data/`
 - `archive/`
 - `logs/`
-- 本地虚拟环境
+- `.venv/`
 
-也就是说，这个仓库主要保存代码、配置和实验脚本；大体积数据和运行产物需要单独同步。
+所以 GitHub 上一般只有代码和文档。真正要跑的时候，数据和历史产物需要你自己同步。
+
+## 你现在该去哪份文档
+
+- 想处理原始数据：看 [`USER_MANUAL.md`](./USER_MANUAL.md)
+- 想做抽样、训练、预测、分析：看 [`bert/README.md`](./bert/README.md)
+- 想在 Windows + NVIDIA 上跑：看 [`WINDOWS_SETUP.md`](./WINDOWS_SETUP.md)
