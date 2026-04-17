@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import argparse
+import csv
 import json
 import math
 import re
@@ -20,6 +21,8 @@ from lib.io_utils import save_json
 
 DEFAULT_SEMANTIC_DIR = "bert/artifacts/broad_analysis/semantic_analysis"
 DEFAULT_NOISE_TERMS_PATH = "bert/config/semantic_midterm_noise_terms.txt"
+DEFAULT_BUCKET_RULES_PATH = "bert/config/semantic_bucket_rules.json"
+DEFAULT_BUCKET_OVERRIDES_PATH = "bert/config/semantic_bucket_overrides.csv"
 PURE_ASCII_TERM_RE = re.compile(r"^[A-Za-z0-9._-]+$")
 HAS_ASCII_RE = re.compile(r"[A-Za-z]")
 HAS_DIGIT_RE = re.compile(r"\d")
@@ -28,24 +31,34 @@ NOISE_PATTERNS: tuple[tuple[str, re.Pattern[str]], ...] = (
     ("platform_recruitment", re.compile(r"(进团|代招|招代招|回官博|官博|单秒|男店)")),
     ("keyword_self_variant", re.compile(r"(佛系|摆烂|躺平)")),
 )
-THEME_BUCKET_RULES: tuple[tuple[str, tuple[str, ...]], ...] = (
-    ("金融/市场", ("利息", "证券", "保监", "董事", "etf", "基金", "股", "央行", "减持", "质押")),
-    ("工作/学习", ("工作", "上班", "换岗", "岗位", "学校", "考试", "作业", "老师", "同学")),
-    ("身体/健康", ("体脂", "感冒", "腰肌", "锻炼", "免疫力", "身体", "休养", "运动")),
-    ("家庭/关系", ("爸妈", "家人", "朋友", "同学", "家庭", "老人", "葬礼", "过世")),
-    ("平台/社群招募", ("进团", "代招", "官博", "男店", "单秒", "特收", "帮团")),
-    ("自我态度/情绪", ("焦虑", "幸福", "快乐", "满足", "摆烂", "佛系", "躺平")),
-)
-CONTEXT_BUCKET_RULES: tuple[tuple[str, tuple[str, ...]], ...] = (
-    ("粉圈/交易/超话", ("超话", "周边", "应援", "拼车", "卡", "爱豆", "追星", "中转站", "收一张", "佛系收", "佛系出")),
-    ("生活态度/心态", ("看淡", "独处", "心态", "人生", "幸福", "快乐", "满足", "看破", "焦虑", "自爱", "放下")),
-    ("工作/职场/学业", ("工作", "上班", "领导", "岗位", "学校", "考试", "作业", "事业", "换岗", "同事")),
-    ("财经/投资", ("基金", "证券", "财务自由", "利息", "降准", "降息", "加仓", "大盘", "etf", "股")),
-    ("社群招募/平台劳动", ("招新", "代招", "陪玩", "团", "审核", "流水", "应聘", "日入", "跳单", "俱乐部")),
-    ("维权/社会事件", ("维权", "监管部门", "住建局", "保险", "撞伤", "全责", "商铺", "交房", "部门", "投诉")),
-    ("家庭/健康/关系", ("爸妈", "家人", "家庭", "老人", "体脂", "锻炼", "身体", "休养", "葬礼", "过世")),
-    ("游戏/二次元", ("第五人格", "原神", "光遇", "玩家", "战队", "地窖", "谷", "吧唧", "抽卡", "游戏")),
-)
+
+@dataclass(frozen=True)
+class MarkerBucketRule:
+    bucket: str
+    markers: tuple[str, ...]
+
+
+@dataclass(frozen=True)
+class BucketRuleSet:
+    theme_rules: tuple[MarkerBucketRule, ...]
+    context_rules: tuple[MarkerBucketRule, ...]
+
+
+@dataclass(frozen=True)
+class BucketOverride:
+    keyword: str
+    period_label: str
+    term: str
+    context_bucket: str
+    theme_bucket: str
+    note: str
+
+    def specificity(self) -> tuple[int, int, int]:
+        return (
+            int(bool(self.keyword)),
+            int(bool(self.period_label)),
+            int(bool(self.term)),
+        )
 
 
 @dataclass
@@ -108,6 +121,16 @@ def parse_args() -> argparse.Namespace:
         help="Optional newline-delimited exact noise terms for report cleaning.",
     )
     parser.add_argument(
+        "--bucket_rules_path",
+        default=DEFAULT_BUCKET_RULES_PATH,
+        help="JSON file defining theme/context bucket names and marker lists.",
+    )
+    parser.add_argument(
+        "--bucket_overrides_path",
+        default=DEFAULT_BUCKET_OVERRIDES_PATH,
+        help="CSV file for manual bucket overrides. Missing file is ignored.",
+    )
+    parser.add_argument(
         "--top_n_all",
         type=int,
         default=15,
@@ -155,6 +178,74 @@ def load_noise_terms(path: str | None) -> set[str]:
     return terms
 
 
+def _normalize_marker_rules(payload: object, field_name: str) -> tuple[MarkerBucketRule, ...]:
+    if not isinstance(payload, list):
+        raise ValueError(f"{field_name} must be a list of objects.")
+    rules: list[MarkerBucketRule] = []
+    for item in payload:
+        if not isinstance(item, dict):
+            raise ValueError(f"{field_name} entries must be objects.")
+        bucket = str(item.get("bucket", "")).strip()
+        markers_raw = item.get("markers", [])
+        if not bucket:
+            raise ValueError(f"{field_name} entries require a non-empty 'bucket'.")
+        if not isinstance(markers_raw, list):
+            raise ValueError(f"{field_name}.{bucket}.markers must be a list.")
+        markers = tuple(str(marker).strip() for marker in markers_raw if str(marker).strip())
+        rules.append(MarkerBucketRule(bucket=bucket, markers=markers))
+    return tuple(rules)
+
+
+def load_bucket_rules(path: str | None) -> BucketRuleSet:
+    if not path:
+        raise ValueError("bucket_rules_path is required.")
+    resolved = Path(path)
+    if not resolved.exists():
+        raise FileNotFoundError(f"Bucket rules file not found: {resolved}")
+    payload = json.loads(resolved.read_text(encoding="utf-8"))
+    if not isinstance(payload, dict):
+        raise ValueError("Bucket rules JSON must be an object.")
+    return BucketRuleSet(
+        theme_rules=_normalize_marker_rules(payload.get("theme_buckets", []), "theme_buckets"),
+        context_rules=_normalize_marker_rules(payload.get("context_buckets", []), "context_buckets"),
+    )
+
+
+def load_bucket_overrides(path: str | None) -> list[BucketOverride]:
+    if not path:
+        return []
+    resolved = Path(path)
+    if not resolved.exists():
+        return []
+    overrides: list[BucketOverride] = []
+    with resolved.open("r", encoding="utf-8", newline="") as handle:
+        reader = csv.DictReader(handle)
+        for row in reader:
+            if not row:
+                continue
+            term = str(row.get("term", "")).strip()
+            context_bucket = str(row.get("override_context_bucket", "")).strip()
+            theme_bucket = str(row.get("override_theme_bucket", "")).strip()
+            enabled_text = str(row.get("enabled", "1")).strip().lower()
+            enabled = enabled_text not in {"0", "false", "no", "off"}
+            if not enabled or (not term and not str(row.get("keyword", "")).strip()):
+                continue
+            if not context_bucket and not theme_bucket:
+                continue
+            overrides.append(
+                BucketOverride(
+                    keyword=str(row.get("keyword", "")).strip(),
+                    period_label=str(row.get("period_label", "")).strip(),
+                    term=term,
+                    context_bucket=context_bucket,
+                    theme_bucket=theme_bucket,
+                    note=str(row.get("note", "")).strip(),
+                )
+            )
+    overrides.sort(key=lambda item: item.specificity(), reverse=True)
+    return overrides
+
+
 def resolve_tokenized_analysis_base_path(summary: dict, semantic_dir: Path) -> Path:
     candidates: list[Path] = []
     raw_path = summary.get("tokenized_analysis_base_path")
@@ -181,19 +272,23 @@ def truncate_text(value: object, limit: int = 140) -> str:
     return text[: limit - 3] + "..."
 
 
-def infer_theme_bucket(term: str, reasons: list[str]) -> str:
+def infer_bucket_from_markers(text: str, rules: Iterable[MarkerBucketRule], default_bucket: str = "待人工判断") -> str:
+    lowered = str(text or "").lower()
+    for rule in rules:
+        if any(marker.lower() in lowered for marker in rule.markers):
+            return rule.bucket
+    return default_bucket
+
+
+def infer_theme_bucket(term: str, reasons: list[str], bucket_rules: BucketRuleSet) -> str:
     if "keyword_self_variant" in reasons:
         return "关键词自变体"
     if any(reason in {"ascii_or_id_term", "alpha_numeric_noise", "custom_noise_term"} for reason in reasons):
         return "账号/代码噪声"
-    lowered = term.lower()
-    for bucket, markers in THEME_BUCKET_RULES:
-        if any(marker.lower() in lowered for marker in markers):
-            return bucket
-    return "待人工判断"
+    return infer_bucket_from_markers(term, bucket_rules.theme_rules)
 
 
-def classify_term(term: str, keyword: str, exact_noise_terms: set[str]) -> tuple[list[str], str]:
+def classify_term(term: str, keyword: str, exact_noise_terms: set[str], bucket_rules: BucketRuleSet) -> tuple[list[str], str]:
     reasons: list[str] = []
     if keyword in term:
         reasons.append("keyword_self_variant")
@@ -208,7 +303,7 @@ def classify_term(term: str, keyword: str, exact_noise_terms: set[str]) -> tuple
             continue
         if pattern.search(term):
             reasons.append(reason)
-    theme_bucket = infer_theme_bucket(term, reasons)
+    theme_bucket = infer_theme_bucket(term, reasons, bucket_rules)
     return sorted(set(reasons)), theme_bucket
 
 
@@ -222,6 +317,7 @@ def prepare_candidate_frame(
     neighbor_df: pd.DataFrame,
     selected_keywords: list[str],
     exact_noise_terms: set[str],
+    bucket_rules: BucketRuleSet,
 ) -> pd.DataFrame:
     merged_neighbors = neighbor_df.rename(columns={"neighbor_term": "term"})
     neighbor_columns = ["keyword", "period_label", "term", "embedding_similarity", "neighbor_rank"]
@@ -233,7 +329,7 @@ def prepare_candidate_frame(
     merged = merged[merged["keyword"].isin(selected_keywords)].copy()
 
     reason_payload = merged.apply(
-        lambda row: classify_term(str(row["term"]), str(row["keyword"]), exact_noise_terms),
+        lambda row: classify_term(str(row["term"]), str(row["keyword"]), exact_noise_terms, bucket_rules),
         axis=1,
     )
     merged["auto_drop_reasons"] = reason_payload.map(lambda item: " | ".join(item[0]))
@@ -242,6 +338,8 @@ def prepare_candidate_frame(
     merged["semantic_supported"] = merged["embedding_similarity"].notna()
     merged["midterm_score"] = merged.apply(compute_midterm_score, axis=1)
     merged["auto_keep_for_midterm"] = ~merged["auto_noise_flag"]
+    merged["theme_bucket"] = merged["auto_theme_bucket"]
+    merged["theme_bucket_source"] = "rule"
     return merged
 
 
@@ -337,10 +435,127 @@ def build_period_overview(period_shortlist: pd.DataFrame) -> pd.DataFrame:
                 "lead_terms_for_midterm": " / ".join(
                     f"{term}({int(freq)})" for term, freq in zip(ordered["term"], ordered["term_doc_freq"])
                 ),
-                "lead_theme_buckets": " / ".join(ordered["auto_theme_bucket"].astype(str).tolist()),
+                "lead_theme_buckets": " / ".join(ordered["theme_bucket"].astype(str).tolist()),
             }
         )
     return pd.DataFrame(rows).sort_values(["keyword", "period_label"]).reset_index(drop=True)
+
+
+def build_context_trajectory(period_candidates: pd.DataFrame, *, lead_term_limit: int = 4) -> pd.DataFrame:
+    if period_candidates.empty:
+        return pd.DataFrame(
+            columns=[
+                "keyword",
+                "period_label",
+                "context_bucket",
+                "doc_count_in_keyword",
+                "context_term_count",
+                "context_term_doc_freq_sum",
+                "context_midterm_score_sum",
+                "context_doc_freq_share",
+                "context_score_share",
+                "lead_terms",
+            ]
+        )
+
+    base = period_candidates.copy()
+    base["context_term_doc_freq_sum"] = base.groupby(["keyword", "period_label", "context_bucket"], dropna=False)[
+        "term_doc_freq"
+    ].transform("sum")
+    base["context_midterm_score_sum"] = base.groupby(["keyword", "period_label", "context_bucket"], dropna=False)[
+        "midterm_score"
+    ].transform("sum")
+    base["total_period_doc_freq"] = base.groupby(["keyword", "period_label"], dropna=False)["term_doc_freq"].transform("sum")
+    base["total_period_midterm_score"] = base.groupby(["keyword", "period_label"], dropna=False)["midterm_score"].transform("sum")
+
+    rows: list[dict[str, object]] = []
+    for (keyword, period_label, context_bucket), frame in base.groupby(
+        ["keyword", "period_label", "context_bucket"], dropna=False
+    ):
+        ordered = frame.sort_values(
+            ["midterm_score", "term_doc_freq", "lift"],
+            ascending=[False, False, False],
+        )
+        context_doc_freq = float(ordered["context_term_doc_freq_sum"].iloc[0])
+        context_score = float(ordered["context_midterm_score_sum"].iloc[0])
+        total_doc_freq = float(ordered["total_period_doc_freq"].iloc[0])
+        total_score = float(ordered["total_period_midterm_score"].iloc[0])
+        rows.append(
+            {
+                "keyword": keyword,
+                "period_label": period_label,
+                "context_bucket": context_bucket,
+                "doc_count_in_keyword": int(ordered["doc_count_in_keyword"].iloc[0]),
+                "context_term_count": int(len(ordered)),
+                "context_term_doc_freq_sum": int(context_doc_freq),
+                "context_midterm_score_sum": context_score,
+                "context_doc_freq_share": float(context_doc_freq / total_doc_freq) if total_doc_freq else 0.0,
+                "context_score_share": float(context_score / total_score) if total_score else 0.0,
+                "lead_terms": " / ".join(ordered["term"].astype(str).head(lead_term_limit).tolist()),
+            }
+        )
+
+    return pd.DataFrame(rows).sort_values(
+        ["keyword", "period_label", "context_score_share", "context_term_doc_freq_sum"],
+        ascending=[True, True, False, False],
+    ).reset_index(drop=True)
+
+
+def build_context_shift_summary(context_trajectory: pd.DataFrame) -> pd.DataFrame:
+    if context_trajectory.empty:
+        return pd.DataFrame(
+            columns=[
+                "keyword",
+                "context_bucket",
+                "period_count",
+                "first_period",
+                "first_context_score_share",
+                "latest_period",
+                "latest_context_score_share",
+                "score_share_change",
+                "peak_period",
+                "peak_context_score_share",
+                "avg_context_score_share",
+                "representative_terms_over_time",
+            ]
+        )
+
+    rows: list[dict[str, object]] = []
+    for (keyword, context_bucket), frame in context_trajectory.groupby(["keyword", "context_bucket"], dropna=False):
+        ordered = frame.sort_values("period_label")
+        peak_row = ordered.loc[ordered["context_score_share"].idxmax()]
+        first_row = ordered.iloc[0]
+        latest_row = ordered.iloc[-1]
+        representative_terms: list[str] = []
+        for term in ordered["lead_terms"].astype(str):
+            for piece in [item.strip() for item in term.split("/")]:
+                if piece and piece not in representative_terms:
+                    representative_terms.append(piece)
+                if len(representative_terms) >= 6:
+                    break
+            if len(representative_terms) >= 6:
+                break
+        rows.append(
+            {
+                "keyword": keyword,
+                "context_bucket": context_bucket,
+                "period_count": int(len(ordered)),
+                "first_period": str(first_row["period_label"]),
+                "first_context_score_share": float(first_row["context_score_share"]),
+                "latest_period": str(latest_row["period_label"]),
+                "latest_context_score_share": float(latest_row["context_score_share"]),
+                "score_share_change": float(latest_row["context_score_share"] - first_row["context_score_share"]),
+                "peak_period": str(peak_row["period_label"]),
+                "peak_context_score_share": float(peak_row["context_score_share"]),
+                "avg_context_score_share": float(ordered["context_score_share"].mean()),
+                "representative_terms_over_time": " / ".join(representative_terms),
+            }
+        )
+
+    return pd.DataFrame(rows).sort_values(
+        ["keyword", "avg_context_score_share", "peak_context_score_share"],
+        ascending=[True, False, False],
+    ).reset_index(drop=True)
 
 
 def build_noise_diagnostics(candidates: pd.DataFrame) -> pd.DataFrame:
@@ -522,31 +737,68 @@ def attach_match_stats(df: pd.DataFrame, stats_lookup: dict[tuple[str, str, str]
     return pd.DataFrame(rows)
 
 
-def infer_context_bucket(text: object) -> str:
-    lowered = str(text or "").lower()
-    for bucket, markers in CONTEXT_BUCKET_RULES:
-        if any(marker.lower() in lowered for marker in markers):
-            return bucket
-    return "待人工判断"
+def resolve_bucket_override(
+    *,
+    keyword: str,
+    period_label: str,
+    term: str,
+    overrides: list[BucketOverride],
+) -> BucketOverride | None:
+    for override in overrides:
+        if override.keyword and override.keyword != keyword:
+            continue
+        if override.period_label and override.period_label != period_label:
+            continue
+        if override.term and override.term != term:
+            continue
+        return override
+    return None
 
 
-def attach_context_buckets(df: pd.DataFrame) -> pd.DataFrame:
+def attach_context_buckets(df: pd.DataFrame, bucket_rules: BucketRuleSet, overrides: list[BucketOverride]) -> pd.DataFrame:
     if df.empty:
         return df.copy()
     result = df.copy()
-    result["auto_context_bucket"] = result["example_1_text"].map(infer_context_bucket)
+    result["auto_context_bucket"] = result["example_1_text"].map(
+        lambda text: infer_bucket_from_markers(text, bucket_rules.context_rules)
+    )
+    result["context_bucket"] = result["auto_context_bucket"]
+    result["context_bucket_source"] = "rule"
+    result["bucket_override_note"] = ""
+
+    resolved_overrides = result.apply(
+        lambda row: resolve_bucket_override(
+            keyword=str(row.get("keyword", "")),
+            period_label=str(row.get("period_label", "")),
+            term=str(row.get("term", "")),
+            overrides=overrides,
+        ),
+        axis=1,
+    )
+    result["_bucket_override"] = resolved_overrides
+    has_override = result["_bucket_override"].notna()
+    if has_override.any():
+        for index, override in result.loc[has_override, "_bucket_override"].items():
+            if override.context_bucket:
+                result.at[index, "context_bucket"] = override.context_bucket
+                result.at[index, "context_bucket_source"] = "override"
+            if override.theme_bucket:
+                result.at[index, "theme_bucket"] = override.theme_bucket
+                result.at[index, "theme_bucket_source"] = "override"
+            result.at[index, "bucket_override_note"] = override.note
+    result = result.drop(columns=["_bucket_override"])
     return result
 
 
 def build_context_bucket_summary(overall_shortlist: pd.DataFrame) -> pd.DataFrame:
     if overall_shortlist.empty:
-        return pd.DataFrame(columns=["keyword", "auto_context_bucket", "term_count", "example_terms"])
+        return pd.DataFrame(columns=["keyword", "context_bucket", "term_count", "example_terms"])
     grouped = (
-        overall_shortlist.groupby(["keyword", "auto_context_bucket"], dropna=False)["term"]
+        overall_shortlist.groupby(["keyword", "context_bucket"], dropna=False)["term"]
         .agg(["count", lambda values: " / ".join(list(values)[:5])])
         .reset_index()
         .rename(columns={"count": "term_count", "<lambda_0>": "example_terms"})
-        .sort_values(["keyword", "term_count", "auto_context_bucket"], ascending=[True, False, True])
+        .sort_values(["keyword", "term_count", "context_bucket"], ascending=[True, False, True])
     )
     return grouped.reset_index(drop=True)
 
@@ -565,7 +817,14 @@ def build_coding_template(overall: pd.DataFrame, per_period: pd.DataFrame) -> pd
                 "lift",
                 "embedding_similarity",
                 "auto_theme_bucket",
+                "theme_bucket",
+                "theme_bucket_source",
+                "auto_context_bucket",
+                "context_bucket",
+                "context_bucket_source",
+                "bucket_override_note",
                 "manual_theme_bucket",
+                "manual_context_bucket",
                 "manual_keep_for_midterm",
                 "manual_quote_candidate",
                 "manual_note",
@@ -573,17 +832,71 @@ def build_coding_template(overall: pd.DataFrame, per_period: pd.DataFrame) -> pd
         )
     template = template.drop_duplicates(subset=["keyword", "period_label", "term"]).copy()
     template["manual_theme_bucket"] = ""
+    template["manual_context_bucket"] = ""
     template["manual_keep_for_midterm"] = ""
     template["manual_quote_candidate"] = ""
     template["manual_note"] = ""
     return template.reset_index(drop=True)
 
 
+def build_bucket_override_template(overall: pd.DataFrame, per_period: pd.DataFrame) -> pd.DataFrame:
+    template = pd.concat([overall, per_period], ignore_index=True)
+    if template.empty:
+        return pd.DataFrame(
+            columns=[
+                "keyword",
+                "period_label",
+                "term",
+                "auto_context_bucket",
+                "context_bucket",
+                "override_context_bucket",
+                "auto_theme_bucket",
+                "theme_bucket",
+                "override_theme_bucket",
+                "enabled",
+                "note",
+                "example_1_text",
+            ]
+        )
+    columns = [
+        "keyword",
+        "period_label",
+        "term",
+        "auto_context_bucket",
+        "context_bucket",
+        "auto_theme_bucket",
+        "theme_bucket",
+        "example_1_text",
+    ]
+    available = [column for column in columns if column in template.columns]
+    result = template[available].drop_duplicates(subset=["keyword", "period_label", "term"]).copy()
+    result["override_context_bucket"] = ""
+    result["override_theme_bucket"] = ""
+    result["enabled"] = ""
+    result["note"] = ""
+    ordered_columns = [
+        "keyword",
+        "period_label",
+        "term",
+        "auto_context_bucket",
+        "context_bucket",
+        "override_context_bucket",
+        "auto_theme_bucket",
+        "theme_bucket",
+        "override_theme_bucket",
+        "enabled",
+        "note",
+        "example_1_text",
+    ]
+    return result[[column for column in ordered_columns if column in result.columns]].reset_index(drop=True)
+
+
 def render_markdown_summary(
     *,
     candidates: pd.DataFrame,
     overall_shortlist: pd.DataFrame,
-    period_overview: pd.DataFrame,
+    context_trajectory: pd.DataFrame,
+    context_shift_summary: pd.DataFrame,
     noise_diagnostics: pd.DataFrame,
     context_bucket_summary: pd.DataFrame,
     output_path: Path,
@@ -592,7 +905,24 @@ def render_markdown_summary(
     lines.append(
         f"- 原始候选词行数：{len(candidates)}；自动保留用于中期整理的候选词行数：{int(candidates['auto_keep_for_midterm'].sum())}。"
     )
-    lines.append("- 这一版建议把 `keyword_cooccurrence.csv` 视为候选词池，把本目录下的清洗 shortlist 视为汇报入口。")
+    lines.append("- `keyword_cooccurrence.csv` 作为候选词池，`midterm_bundle/` 目录下的表用于阅读、修正和汇报。")
+    lines.append("- 语义簇规则默认来自 `bert/config/semantic_bucket_rules.json`；如果要手工改桶，可以在 `bert/config/semantic_bucket_overrides.csv` 里写覆盖项。")
+    lines.append("")
+
+    lines.append("## 09 的读取方式")
+    lines.append("- 先看 `semantic_keyword_overview.csv`：确认每个关键词的代表词、代表文本和最终分桶。")
+    lines.append("- 再看 `semantic_context_trajectory.csv`：观察每个语义簇在不同时间段的强弱变化。")
+    lines.append("- 然后看 `semantic_context_shift_summary.csv`：提炼“持续时间、峰值时间、最新占比”这类结论。")
+    lines.append("- `semantic_period_shortlist.csv` 和 `semantic_period_overview.csv` 用来解释某个时间段为什么会出现某种语义簇。")
+    lines.append("- `semantic_bucket_override_template.csv` 和 `bert/config/semantic_bucket_overrides.csv` 用来做人工修正。")
+    lines.append("")
+
+    lines.append("## 09 的原理")
+    lines.append("- 先为每个关键词在每个时间段生成一批临近词候选。")
+    lines.append("- 再为这些候选词回查代表文本。")
+    lines.append("- 根据代表文本中的 marker，把候选词归入 `context_bucket` 和 `theme_bucket`。")
+    lines.append("- 最后按 `keyword + period + context_bucket` 聚合，观察语义簇在时间上的强弱变化。")
+    lines.append("- 如果自动分桶不理想，可以用人工覆盖表修正最终分桶。")
     lines.append("")
 
     if not noise_diagnostics.empty:
@@ -612,15 +942,34 @@ def render_markdown_summary(
         bucket_subset = context_bucket_summary[context_bucket_summary["keyword"] == keyword].copy()
         bucket_text = " / ".join(
             f"{bucket}({int(count)})"
-            for bucket, count in zip(bucket_subset["auto_context_bucket"], bucket_subset["term_count"])
+            for bucket, count in zip(bucket_subset["context_bucket"], bucket_subset["term_count"])
         )
         lead_terms = " / ".join(subset["term"].head(5).tolist())
         lines.append(f"- `{keyword}`: 主要上下文桶 = {bucket_text}；代表词 = {lead_terms}")
     lines.append("")
 
+    if not context_shift_summary.empty:
+        lines.append("## 语义簇时间变化")
+        for keyword in normalize_cli_keywords(context_shift_summary["keyword"].unique().tolist()):
+            subset = context_shift_summary[context_shift_summary["keyword"] == keyword].head(3)
+            if subset.empty:
+                continue
+            parts = []
+            for _, row in subset.iterrows():
+                parts.append(
+                    f"{row['context_bucket']}({int(row['period_count'])}期, 峰值 {row['peak_period']}, "
+                    f"最新占比 {float(row['latest_context_score_share']):.2f})"
+                )
+            lines.append(f"- `{keyword}`: {' / '.join(parts)}")
+    lines.append("")
+
     lines.append("## 怎么讲 09")
-    lines.append("- 先讲 `semantic_keyword_overview.csv`：每个关键词总体上最值得进入中期报告的词和自动主题桶。")
-    lines.append("- 再讲 `semantic_period_overview.csv`：每个月该关键词的 lead terms。")
+    lines.append("- 先讲 `semantic_keyword_overview.csv`：用它命名每个关键词的代表语义簇和代表用法。")
+    lines.append(
+        "- 再讲 `semantic_context_trajectory.csv` 和 `semantic_context_shift_summary.csv`：关注语义簇在时间上的扩张、收缩和迁移。"
+    )
+    lines.append("- `semantic_period_shortlist.csv` 和 `semantic_period_overview.csv` 作为回查入口，用来解释某段时间为什么会出现某种语义簇。")
+    lines.append("- 如果自动分桶不理想，先看 `semantic_bucket_override_template.csv`，把需要修正的行复制到 `bert/config/semantic_bucket_overrides.csv` 后重跑。")
     lines.append("- 最后在 `semantic_midterm_coding_template.csv` 里人工勾选保留项，并用 example_text 回原文核对。")
     lines.append("")
 
@@ -638,6 +987,12 @@ def main() -> None:
 
     logger = OperationLogger(output_dir / "semantic_midterm_operation_log.md")
     logger.log(f"Start 09 midterm preparation from {semantic_dir}")
+    bucket_rules = load_bucket_rules(args.bucket_rules_path)
+    bucket_overrides = load_bucket_overrides(args.bucket_overrides_path)
+    logger.log(
+        f"Loaded bucket rules (theme={len(bucket_rules.theme_rules)}, context={len(bucket_rules.context_rules)}) "
+        f"and manual overrides={len(bucket_overrides)}"
+    )
 
     cooccurrence_path = resolve_semantic_artifact(semantic_dir, "keyword_cooccurrence.csv")
     neighbors_path = resolve_semantic_artifact(semantic_dir, "keyword_semantic_neighbors.csv")
@@ -657,7 +1012,7 @@ def main() -> None:
     )
 
     logger.log("Build cleaned candidate table with auto flags, theme buckets, and report score")
-    candidates = prepare_candidate_frame(cooccurrence_df, neighbor_df, selected_keywords, exact_noise_terms)
+    candidates = prepare_candidate_frame(cooccurrence_df, neighbor_df, selected_keywords, exact_noise_terms, bucket_rules)
     save_dataframe(candidates, output_dir / "semantic_midterm_candidates.csv")
 
     logger.log("Select report-ready shortlists for overall keywords and per-period reading")
@@ -668,12 +1023,16 @@ def main() -> None:
         min_doc_freq_all=args.min_doc_freq_all,
         min_doc_freq_period=args.min_doc_freq_period,
     )
-    period_overview = build_period_overview(period_shortlist)
     noise_diagnostics = build_noise_diagnostics(candidates)
     overall_candidates = candidates[
         (candidates["period_label"] == "ALL")
         & candidates["auto_keep_for_midterm"]
         & (candidates["term_doc_freq"] >= args.min_doc_freq_all)
+    ].copy()
+    period_context_candidates = candidates[
+        (candidates["period_label"] != "ALL")
+        & candidates["auto_keep_for_midterm"]
+        & (candidates["term_doc_freq"] >= args.min_doc_freq_period)
     ].copy()
 
     tokenized_path = resolve_tokenized_analysis_base_path(summary, semantic_dir)
@@ -691,7 +1050,8 @@ def main() -> None:
         ],
     )
 
-    requested_rows = pd.concat([overall_candidates, period_shortlist], ignore_index=True)
+    requested_rows = pd.concat([overall_candidates, period_context_candidates, period_shortlist], ignore_index=True)
+    requested_rows = requested_rows.drop_duplicates(subset=["keyword", "period_label", "term"]).reset_index(drop=True)
     example_lookup, stats_lookup = build_example_lookup(
         tokenized_base,
         requested_rows,
@@ -700,27 +1060,38 @@ def main() -> None:
     )
     overall_candidates = attach_match_stats(overall_candidates, stats_lookup)
     overall_shortlist = rerank_overall_with_diversity(overall_candidates, top_n_all=args.top_n_all)
+    period_context_candidates = attach_match_stats(period_context_candidates, stats_lookup)
     period_shortlist = attach_match_stats(period_shortlist, stats_lookup)
     overall_shortlist = attach_examples(overall_shortlist, example_lookup, args.example_count)
+    period_context_candidates = attach_examples(period_context_candidates, example_lookup, args.example_count)
     period_shortlist = attach_examples(period_shortlist, example_lookup, args.example_count)
     coding_template = build_coding_template(overall_shortlist, period_shortlist)
 
-    overall_shortlist = attach_context_buckets(overall_shortlist)
-    period_shortlist = attach_context_buckets(period_shortlist)
+    overall_shortlist = attach_context_buckets(overall_shortlist, bucket_rules, bucket_overrides)
+    period_context_candidates = attach_context_buckets(period_context_candidates, bucket_rules, bucket_overrides)
+    period_shortlist = attach_context_buckets(period_shortlist, bucket_rules, bucket_overrides)
+    period_overview = build_period_overview(period_shortlist)
+    context_trajectory = build_context_trajectory(period_context_candidates)
+    context_shift_summary = build_context_shift_summary(context_trajectory)
     context_bucket_summary = build_context_bucket_summary(overall_shortlist)
-    coding_template = attach_context_buckets(coding_template)
+    coding_template = attach_context_buckets(coding_template, bucket_rules, bucket_overrides)
+    bucket_override_template = build_bucket_override_template(overall_shortlist, period_shortlist)
 
     logger.log("Write report-facing CSV/Markdown/JSON bundle for 09")
     save_dataframe(overall_shortlist, output_dir / "semantic_keyword_overview.csv")
     save_dataframe(period_shortlist, output_dir / "semantic_period_shortlist.csv")
     save_dataframe(period_overview, output_dir / "semantic_period_overview.csv")
+    save_dataframe(context_trajectory, output_dir / "semantic_context_trajectory.csv")
+    save_dataframe(context_shift_summary, output_dir / "semantic_context_shift_summary.csv")
     save_dataframe(noise_diagnostics, output_dir / "semantic_noise_diagnostics.csv")
     save_dataframe(coding_template, output_dir / "semantic_midterm_coding_template.csv")
+    save_dataframe(bucket_override_template, output_dir / "semantic_bucket_override_template.csv")
 
     render_markdown_summary(
         candidates=candidates,
         overall_shortlist=overall_shortlist,
-        period_overview=period_overview,
+        context_trajectory=context_trajectory,
+        context_shift_summary=context_shift_summary,
         noise_diagnostics=noise_diagnostics,
         context_bucket_summary=context_bucket_summary,
         output_path=output_dir / "semantic_midterm_notes.md",
@@ -730,14 +1101,20 @@ def main() -> None:
         "semantic_dir": str(semantic_dir.resolve()),
         "output_dir": str(output_dir.resolve()),
         "selected_keywords": selected_keywords,
+        "bucket_rules_path": str(Path(args.bucket_rules_path).resolve()),
+        "bucket_override_path": str(Path(args.bucket_overrides_path).resolve()),
         "candidate_row_count": int(len(candidates)),
         "auto_keep_row_count": int(candidates["auto_keep_for_midterm"].sum()),
         "overall_shortlist_row_count": int(len(overall_shortlist)),
         "period_shortlist_row_count": int(len(period_shortlist)),
+        "context_trajectory_row_count": int(len(context_trajectory)),
+        "context_shift_summary_row_count": int(len(context_shift_summary)),
         "noise_diagnostic_row_count": int(len(noise_diagnostics)),
         "context_bucket_summary_row_count": int(len(context_bucket_summary)),
         "coding_template_row_count": int(len(coding_template)),
+        "bucket_override_template_row_count": int(len(bucket_override_template)),
         "exact_noise_term_count": int(len(exact_noise_terms)),
+        "bucket_override_count": int(len(bucket_overrides)),
     }
     save_json(output_dir / "semantic_midterm_summary.json", summary_payload)
     save_dataframe(context_bucket_summary, output_dir / "semantic_context_bucket_summary.csv")

@@ -1,0 +1,2 @@
+keyword,period_label,term,override_context_bucket,override_theme_bucket,enabled,note
+,,,,,,Fill rows here to override automatic bucket assignment; leave the file with only this header if unused.
