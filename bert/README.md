@@ -444,6 +444,21 @@ cp bert/llm_label_local.example.toml bert/llm_label_local.toml
 - `08` / `09` 默认共用停用词表 `bert/config/topic_stopwords.txt`
 - `09` 的默认 embedding 也改为 `BAAI/bge-small-zh-v1.5`，和 `08` 保持一致
 
+如果你发现 `09` 的原始词表太脏，不适合直接拿去讲中期，可以在已有 `09` 输出上再跑一层“报告整理”：
+
+```bash
+.venv/bin/python bert/09_prepare_semantic_midterm.py \
+  --semantic_dir "bert/artifacts/broad_analysis/semantic_analysis"
+```
+
+这一步不会重跑重型 embedding，只会读取 `09` 的现成结果并生成：
+
+- `midterm_bundle/semantic_keyword_overview.csv`：每个关键词总体上更适合进入中期报告的词
+- `midterm_bundle/semantic_period_shortlist.csv`：按月筛过一轮的 lead terms
+- `midterm_bundle/semantic_midterm_coding_template.csv`：人工编码模板，附代表原文
+- `midterm_bundle/semantic_noise_diagnostics.csv`：被自动判成噪声的词和原因
+- `midterm_bundle/semantic_midterm_notes.md`：面向中期汇报的阅读说明
+
 ### 10. `10_concept_drift_analysis.py`
 
 作用：
@@ -485,54 +500,130 @@ cp bert/llm_label_local.example.toml bert/llm_label_local.toml
 
 作用：
 
-- 直接读取 `08` 产出的 BERTopic 结果，生成唯一的主题可视化入口
-- 以中期展示为目标，把主题规模、关键词对应关系、时间演化、主题解释和附录页打成一套 bundle
-- 同时输出 dashboard、附图页和表格，不再拆成 `11` / `12` 两套脚本
+- 直接读取 `08` 产出的 BERTopic 结果，生成单一 `topic_dashboard.html`
+- 用五个标签页组织中期展示叙事：总览、关键词画像、时间演化、地域分布、主题浏览
+- 支持从 `08` 的 `topic_model_summary.json` 自动对齐输入路径，避免手动重复敲多条 CSV 路径
+- 支持展示层过滤：`--min_topic_size` 和 `--noise_pattern` 只影响 `11` 输出，不改动 `08` 的原始 CSV
 
 适用场景：
 
-- 现在只保留 `11` 这一个入口。
-- 如果你要讲“BERTopic 聚出了什么、三个关键词分别落到哪些主题、主题如何随时间变化”，直接跑 `11` 就行。
+- 如果你要讲“BERTopic 聚出了什么、三个关键词分别落到哪些主题、主题如何随时间变化、哪些省份更集中”，直接跑 `11` 就行。
+- 如果你已经有 `08` 的 summary，优先用 `--from_summary`，这样最不容易路径对错。
 
 默认命令：
 
 ```bash
-.venv/bin/python bert/11_visualize_topic_outputs.py
+.venv/bin/python bert/11_visualize_topic_outputs.py \
+  --from_summary "bert/artifacts/broad_analysis/topic_model_BAAI/topic_model_summary.json"
 ```
 
 常用变体：
 
 ```bash
 .venv/bin/python bert/11_visualize_topic_outputs.py \
-  --top_n_topics 20 \
-  --wordcloud_top_n_topics 12 \
-  --top_n_terms 15 \
-  --min_period_docs 1000 \
-  --coding_template_top_n 80
+  --from_summary "bert/artifacts/broad_analysis/topic_model_BAAI/topic_model_summary.json" \
+  --top_n_topics 30 \
+  --top_n_terms 12 \
+  --min_topic_size 300 \
+  --noise_pattern "佛系收|佛系出|中转|抽卡|代肝|黑市|挂卡|求扩"
 ```
 
 重点输出：
 
-- `bert/artifacts/broad_analysis/topic_visualization/topic_midterm_dashboard.html`
-- `bert/artifacts/broad_analysis/topic_visualization/html/topic_prevalence.html`
-- `bert/artifacts/broad_analysis/topic_visualization/html/topic_keyword_alignment.html`
-- `bert/artifacts/broad_analysis/topic_visualization/html/topic_term_detail.html`
-- `bert/artifacts/broad_analysis/topic_visualization/html/topic_evolution_heatmap.html`
-- `bert/artifacts/broad_analysis/topic_visualization/html/topic_wordclouds_appendix.html`
-- `bert/artifacts/broad_analysis/topic_visualization/tables/topic_overview_table.csv`
-- `bert/artifacts/broad_analysis/topic_visualization/tables/keyword_topic_matrix.csv`
-- `bert/artifacts/broad_analysis/topic_visualization/tables/topic_coding_template.csv`
-- `bert/artifacts/broad_analysis/topic_visualization/topic_visualization_summary.json`
+- `bert/artifacts/broad_analysis/topic_visuals/topic_dashboard.html`
+- `bert/artifacts/broad_analysis/topic_visuals/topic_display_table.csv`
+- `bert/artifacts/broad_analysis/topic_visuals/topic_visualization_summary.json`
 
 补充：
 
-- `topic_midterm_dashboard.html` 适合直接拿去做中期展示，先讲 topic 结构，再讲研究关键词如何被不同主题吸附。
-- `topic_keyword_alignment.html` 专门回答“躺平 / 摆烂 / 佛系”分别主要落在哪些 topic 上。
-- `topic_term_detail.html` 会同时给 term weight 和 representative docs，适合做语义校验。
-- `topic_wordclouds_appendix.html` 更偏直观展示，建议放在附录，不替代主展示里的 term weight 条形图。
-- `topic_coding_template.csv` 预留了人工分组、相关性和噪音标记列，适合 topic 归并和清洗。
+- `topic_dashboard.html` 是唯一入口，不再默认拆成多份附图 HTML。
+- 总览页会直接给出 Topic -1 占比、Top 主题与长尾桶、关键词体量饼图、每期文档量折线。
+- 关键词画像页保留“躺平 / 摆烂 / 佛系”的对照，同时把结果收紧成更适合汇报的堆叠图 + 雷达图。
+- 时间演化页除了重点主题折线，还新增“时段 × 主题”热力图。
+- 地域分布页保留省级热力图，并支持切换到头部主题。
+- 主题浏览页会给出可排序的主题卡片：label、文档数、峰值时间、top terms、sparkline、关键词构成条。
+- `topic_display_table.csv` 是汇报用的展示主题清单，不会覆盖 `08` 的底表。
 - 图表使用 ECharts CDN 资源，打开 HTML 时需要能访问对应脚本地址。
-- 如果你已经在 `topic_info.csv` 里补了 `topic_label_zh`，图里会优先使用人工中文标签；否则会回退到 `topic_terms.csv` 的前三个词。
+- 如果你已经在 `topic_info.csv` 里补了 `topic_label_zh`，图里会优先使用人工中文标签；否则会回退到 `topic_terms.csv` 的前几个词。
+
+## 输出目录规范
+
+推荐把 `08` 和 `11` 的输出目录拆开管理：
+
+- `08` 的原始主题模型结果放在 `bert/artifacts/broad_analysis/topic_model/<run_tag>/`
+- `11` 的展示结果放在 `bert/artifacts/broad_analysis/topic_visuals/<run_tag>/`
+
+例如：
+
+```bash
+.venv/bin/python bert/08_topic_model_bertopic.py \
+  --output_dir "bert/artifacts/broad_analysis/topic_model/bge_small_v15"
+
+.venv/bin/python bert/11_visualize_topic_outputs.py \
+  --from_summary "bert/artifacts/broad_analysis/topic_model/bge_small_v15/topic_model_summary.json"
+```
+
+补充说明：
+
+- 如果 `--from_summary` 指向的是规范目录 `topic_model/<run_tag>/topic_model_summary.json`，`11` 默认会把输出落到对应的 `topic_visuals/<run_tag>/`
+- 如果 `--from_summary` 指向的是历史平铺目录，例如 `topic_model_BAAI/topic_model_summary.json`，`11` 默认会把输出落到同级的 `topic_visuals/`
+- 历史遗留目录如 `topic_model_BAAI`、`topic_visuals_BAAI`、`topic_interpretability_BAAI` 建议归档到 `bert/artifacts/broad_analysis/legacy/` 或按 `<run_tag>` 重新整理
+- 新版 `11` 的 `topic_dashboard.html` 已覆盖旧版 `topic_prevalence`、`topic_keyword_alignment`、`topic_evolution_heatmap`、`topic_term_detail`、`topic_wordclouds` 的主要信息点
+
+## 主题清理建议
+
+下面这些是建议，不是默认行为。它们会改变主题结果，建议先单独试一轮，再决定是否固化到主流程。
+
+### A. 先从训练参数收敛主题数
+
+对 280 万量级语料来说，`--min_topic_size 30` 往往偏小，容易切出大量碎片 topic。比较稳妥的起点：
+
+- `--min_topic_size 300`
+- `--nr_topics 60` 或 `auto`
+- `--umap_n_neighbors 50`
+
+### B. 扩停用词表
+
+建议优先检查这些噪声来源是否反复进入头部 topic，再决定是否写进 `bert/config/topic_stopwords.txt`：
+
+| 噪声类型 | 代表 token | 可考虑加入停用词 |
+|---|---|---|
+| 粉圈 / 艺人 | 饭圈、爱豆、人名 | `王鹤` `宋茜` `杨幂` `王一博` `张泽禹` `丁程鑫` `柳智敏` |
+| 游戏 / 手游 | 玩家、战队、角色 | `第五人格` `光遇` `sky` `xyg` `estar` `ag` `原神` `暖暖` |
+| 二手交易 / 应援 | 周边、抽卡、代肝 | `佛系收` `佛系出` `中转站` `周边` `代肝` `黑市` `挂卡` `抽卡` `应援` |
+| 纯数字 / 编号 | 年份、页码、计量 | `2023` `2024` `2025` `2026` `p1` `p2` `p3` `p4` `500w` `100w` |
+| 日历 / 天气 | 节日、天气、问候 | `新年快乐` `生日快乐` `下雨天` `周末` `国庆` `五一` `双十` |
+
+### C. 在 `07 -> 08` 之间加规则过滤
+
+如果研究重点是“躺平 / 摆烂 / 佛系”话语，而不是交易黑话或游戏流量，建议在 `07` 产物进入 `08` 之前做一次轻量过滤：
+
+- 命中 `(佛系收|佛系出|中转|抽卡|代肝|黑市|挂卡|求扩)` 的帖子，直接剔除或只抽样一部分进入 topic model
+- 关键词最好作为独立 token 判断，而不是纯子串匹配；中文场景可以先分词，再判断 token 是否命中
+
+### D. 训练后降噪
+
+如果不想重跑 embedding，可以优先考虑 BERTopic 自带的后处理：
+
+- `topic_model.reduce_outliers(docs, topics, strategy="embeddings")`
+- `topic_model.reduce_topics(docs, nr_topics=50)`
+- 对明显重复的簇再做手工 `merge_topics`
+
+### E. Seeded BERTopic
+
+如果你最关心的是“躺平 / 摆烂 / 佛系”三类姿态，而不是让生活流 topic 自然冒出来，可以考虑显式 seed：
+
+```python
+BERTopic(
+    seed_topic_list=[
+        ["躺平", "内卷", "加班", "不想努力", "摸鱼"],
+        ["摆烂", "破罐破摔", "随便", "不想学", "放弃"],
+        ["佛系", "随缘", "无所谓", "淡定", "看开"],
+    ]
+)
+```
+
+这样更适合研究导向的命题，但代价是主题结构会更“带假设”。
 
 ## Windows 机器上的注意事项
 
