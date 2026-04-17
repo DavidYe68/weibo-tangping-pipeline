@@ -154,6 +154,24 @@ def load_noise_terms(path: str | None) -> set[str]:
     return terms
 
 
+def resolve_tokenized_analysis_base_path(summary: dict, semantic_dir: Path) -> Path:
+    candidates: list[Path] = []
+    raw_path = summary.get("tokenized_analysis_base_path")
+    if raw_path:
+        candidate = Path(str(raw_path))
+        if not candidate.is_absolute():
+            candidate = (semantic_dir / candidate).resolve()
+        candidates.append(candidate)
+    candidates.append((semantic_dir / "tokenized_analysis_base.parquet").resolve())
+
+    for candidate in candidates:
+        if candidate.exists():
+            return candidate
+
+    searched = ", ".join(str(path) for path in candidates)
+    raise FileNotFoundError(f"Could not find tokenized_analysis_base.parquet. Checked: {searched}")
+
+
 def truncate_text(value: object, limit: int = 140) -> str:
     text = str(value or "").replace("\n", " ").strip()
     if len(text) <= limit:
@@ -656,7 +674,7 @@ def main() -> None:
         & (candidates["term_doc_freq"] >= args.min_doc_freq_all)
     ].copy()
 
-    tokenized_path = Path(str(summary["tokenized_analysis_base_path"]))
+    tokenized_path = resolve_tokenized_analysis_base_path(summary, semantic_dir)
     logger.log(f"Load tokenized analysis base from {tokenized_path}")
     tokenized_base = pd.read_parquet(
         tokenized_path,

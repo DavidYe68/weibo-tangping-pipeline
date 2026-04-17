@@ -6,6 +6,7 @@ import time
 from pathlib import Path
 
 import pandas as pd
+from pandas.errors import EmptyDataError
 
 from lib.analysis_utils import (
     DEFAULT_ANALYSIS_KEYWORDS,
@@ -14,8 +15,35 @@ from lib.analysis_utils import (
     save_dataframe,
     sort_period_labels,
 )
+from lib.broad_analysis_layout import sync_drift_output_metadata
 from lib.broad_analysis_overview import refresh_broad_analysis_overview
 from lib.io_utils import save_json
+
+RANKED_TERM_DRIFT_COLUMNS = [
+    "keyword",
+    "previous_period",
+    "current_period",
+    "overlap_count",
+    "jaccard_top_terms",
+    "js_divergence",
+    "overlap_terms",
+    "added_terms",
+    "removed_terms",
+]
+TOPIC_DRIFT_COLUMNS = [
+    "previous_period",
+    "current_period",
+    "topic_js_divergence",
+    "topic_count",
+]
+TOPIC_CHANGE_COLUMNS = [
+    "previous_period",
+    "current_period",
+    "topic_id",
+    "previous_share",
+    "current_share",
+    "share_delta",
+]
 
 
 def format_elapsed(start_time: float) -> str:
@@ -82,11 +110,18 @@ def parse_args() -> argparse.Namespace:
     return parser.parse_args()
 
 
-def load_csv_if_exists(path: str) -> pd.DataFrame:
+def load_csv(path: str, *, required: bool = False) -> pd.DataFrame:
     resolved = Path(path)
     if not resolved.exists():
+        if required:
+            raise FileNotFoundError(f"Required drift input not found: {resolved}")
         return pd.DataFrame()
-    return pd.read_csv(resolved)
+    try:
+        return pd.read_csv(resolved)
+    except EmptyDataError:
+        if required:
+            raise ValueError(f"Required drift input is empty: {resolved}")
+        return pd.DataFrame()
 
 
 def adjacent_pairs(labels: list[str]) -> list[tuple[str, str]]:
@@ -106,7 +141,7 @@ def compare_ranked_terms(
 ) -> pd.DataFrame:
     rows: list[dict[str, object]] = []
     if df.empty:
-        return pd.DataFrame(rows)
+        return pd.DataFrame(rows, columns=RANKED_TERM_DRIFT_COLUMNS)
 
     filtered = df[df[keyword_col].isin(selected_keywords)].copy()
     filtered = filtered[filtered[period_col] != "ALL"].copy()
@@ -153,7 +188,7 @@ def compare_ranked_terms(
                 }
             )
 
-    return pd.DataFrame(rows)
+    return pd.DataFrame(rows, columns=RANKED_TERM_DRIFT_COLUMNS)
 
 
 def compare_topic_shares(
@@ -166,10 +201,12 @@ def compare_topic_shares(
     time_granularity: str,
     filters: dict[str, list[str]] | None = None,
 ) -> tuple[pd.DataFrame, pd.DataFrame]:
+    drift_columns = list(group_cols or []) + TOPIC_DRIFT_COLUMNS
+    change_columns = list(group_cols or []) + TOPIC_CHANGE_COLUMNS
     drift_rows: list[dict[str, object]] = []
     change_rows: list[dict[str, object]] = []
     if df.empty:
-        return pd.DataFrame(drift_rows), pd.DataFrame(change_rows)
+        return pd.DataFrame(drift_rows, columns=drift_columns), pd.DataFrame(change_rows, columns=change_columns)
 
     working = df.copy()
     for column, allowed_values in (filters or {}).items():
@@ -236,7 +273,12 @@ def compare_topic_shares(
             sort_columns,
             ascending=ascending,
         ).reset_index(drop=True)
-    return pd.DataFrame(drift_rows), change_df
+    else:
+        change_df = pd.DataFrame(columns=change_columns)
+    drift_df = pd.DataFrame(drift_rows)
+    if drift_df.empty:
+        drift_df = pd.DataFrame(columns=drift_columns)
+    return drift_df, change_df
 
 
 def main() -> None:
@@ -247,12 +289,12 @@ def main() -> None:
     print("[drift] Loading semantic/topic analysis outputs", flush=True)
     load_start = time.perf_counter()
 
-    cooccurrence_df = load_csv_if_exists(args.cooccurrence_path)
-    neighbor_df = load_csv_if_exists(args.neighbor_path)
-    topic_share_df = load_csv_if_exists(args.topic_share_path)
-    overall_topic_share_df = load_csv_if_exists(args.overall_topic_share_path)
-    topic_share_by_ip_df = load_csv_if_exists(args.topic_share_by_period_and_ip_path)
-    topic_share_by_ip_keyword_df = load_csv_if_exists(args.topic_share_by_period_and_ip_and_keyword_path)
+    cooccurrence_df = load_csv(args.cooccurrence_path, required=True)
+    neighbor_df = load_csv(args.neighbor_path, required=True)
+    topic_share_df = load_csv(args.topic_share_path, required=True)
+    overall_topic_share_df = load_csv(args.overall_topic_share_path, required=True)
+    topic_share_by_ip_df = load_csv(args.topic_share_by_period_and_ip_path)
+    topic_share_by_ip_keyword_df = load_csv(args.topic_share_by_period_and_ip_and_keyword_path)
     print(
         "[drift] Loaded inputs in "
         f"{format_elapsed(load_start)} "
@@ -390,6 +432,7 @@ def main() -> None:
         "topic_share_change_by_ip_and_keyword_row_count": int(len(topic_change_by_ip_keyword_df)),
     }
     save_json(summary_path, summary)
+    sync_drift_output_metadata(output_dir)
     try:
         refresh_broad_analysis_overview(output_dir)
     except Exception as exc:

@@ -42,14 +42,17 @@ bert/
 
 ## artifacts 目录约定
 
-为了避免训练 run、分析中间结果和历史可视化堆在同一层，建议把 `bert/artifacts/` 固定整理成下面这个结构：
+为了避免训练 run、分析中间结果和历史快照堆在同一层，建议把 `bert/artifacts/` 固定整理成下面这个结构：
 
 ```text
 bert/artifacts/
 ├── runs/
 │   ├── dual_label/      dual-label 训练 run
 │   └── single_label/    single-label 训练 run
-└── broad_analysis/      07-11 分析链的标准输出
+└── broad_analysis/      07-10 分析链的标准输出
+    ├── topic_model_BAAI/ 08 的 canonical BERTopic 输出
+    ├── semantic_analysis/ 09 的 canonical 语义分析输出
+    ├── drift_analysis/    10 的 canonical 漂移分析输出
     ├── overview/        只保留“先看什么”的浓缩表和 manifest
     ├── snapshots/       带日期或一次性批处理的快照输出
     └── legacy/          已淘汰或重复的历史输出
@@ -58,11 +61,13 @@ bert/artifacts/
 补充约定：
 
 - `04` / `05` 的新训练产物，优先直接写到 `bert/artifacts/runs/...`
-- `07`-`11` 的分析产物，继续放在 `bert/artifacts/broad_analysis/`
+- `07`-`10` 的分析产物，继续放在 `bert/artifacts/broad_analysis/`
 - `broad_analysis/README.md` + `broad_analysis/overview/` 是默认阅读入口；原始明细继续保留在各自目录
-- BERTopic 主结果目录优先使用 `bert/artifacts/broad_analysis/topic_model_BAAI/`
+- `08` 的主结果固定放在 `bert/artifacts/broad_analysis/topic_model_BAAI/`
+- `09` 的当前主结果固定放在 `bert/artifacts/broad_analysis/semantic_analysis/`
+- `10` 的当前主结果固定放在 `bert/artifacts/broad_analysis/drift_analysis/`
 - 带日期后缀或 overnight 的分析批次，优先放进 `bert/artifacts/broad_analysis/snapshots/`
-- 历史遗留的旧版 topic 可视化或按 embedding 名额外分出的目录，统一挪到 `bert/artifacts/broad_analysis/legacy/`
+- 历史遗留的旧版 topic / semantic / drift 目录，统一挪到 `bert/artifacts/broad_analysis/legacy/`
 
 仓库里带了一个可重复执行的整理脚本：
 
@@ -74,8 +79,8 @@ bert/artifacts/
 
 - 这个脚本会把顶层的训练 run 归档到 `runs/`
 - 会把 dated / overnight 的 broad-analysis 输出归档到 `snapshots/`
+- 会把最新的 semantic / drift 快照补到 canonical 目录
 - 会把旧版或重复的 broad-analysis 输出归到 `legacy/`
-- 如果 `topic_visualization/` 里只有一层模型名子目录，会把 bundle 摊平回标准位置
 - 脚本默认值里仍保留了部分旧路径名以兼容老命令；如果你想从一开始就保持整洁，训练时请显式把输出目录写到 `runs/`
 
 ## 最常见的真实流程
@@ -377,6 +382,19 @@ cp bert/llm_label_local.example.toml bert/llm_label_local.toml
   --save_model
 ```
 
+如果你的目标是把主题收敛到更适合汇报的 `8-15` 个大主题，可以先从这组更稳妥的参数起步：
+
+```bash
+.venv/bin/python bert/08_topic_model_bertopic.py \
+  --min_topic_size 300 \
+  --hdbscan_min_samples 60 \
+  --umap_n_neighbors 80 \
+  --nr_topics 12 \
+  --outlier_reduction_strategy c-tf-idf+distributions \
+  --outlier_reduction_threshold 0.05 \
+  --resume
+```
+
 常用可选参数：
 
 - `--device auto|cpu|cuda|mps`：控制 sentence-transformers 的编码设备
@@ -392,6 +410,9 @@ cp bert/llm_label_local.example.toml bert/llm_label_local.toml
 - `--checkpoint_dir`：自定义 checkpoint 目录
 - `--umap_low_memory / --no-umap_low_memory`：控制 UMAP 低内存模式，默认开启
 - `--hdbscan_core_dist_n_jobs`：控制 HDBSCAN 并行度；更小的值更省内存
+- `--hdbscan_min_samples`：单独控制 HDBSCAN 的 `min_samples`；默认等于 `min_topic_size`，适当调低通常能显著减少 outlier
+- `--outlier_reduction_strategy`：训练后用 BERTopic 官方 `reduce_outliers` 做离群文档回填，支持 `c-tf-idf`、`distributions`、`embeddings`、`probabilities`、`c-tf-idf+distributions`
+- `--outlier_reduction_threshold`：离群文档回填的相似度阈值；越高越保守
 - `--ip_col`：手动指定 IP 列名
 
 重点输出：
@@ -501,79 +522,33 @@ cp bert/llm_label_local.example.toml bert/llm_label_local.toml
 - `bert/artifacts/broad_analysis/drift_analysis/topic_share_change_by_ip_and_keyword.csv`
 - `bert/artifacts/broad_analysis/drift_analysis/drift_analysis_summary.json`
 
-### 11. `11_visualize_topic_outputs.py`
-
-作用：
-
-- 直接读取 `08` 产出的 BERTopic 结果，生成单一 `topic_dashboard.html`
-- 用五个标签页组织中期展示叙事：总览、关键词画像、时间演化、地域分布、主题浏览
-- 支持从 `08` 的 `topic_model_summary.json` 自动对齐输入路径，避免手动重复敲多条 CSV 路径
-- 支持展示层过滤：`--min_topic_size` 和 `--noise_pattern` 只影响 `11` 输出，不改动 `08` 的原始 CSV
-
-适用场景：
-
-- 如果你要讲“BERTopic 聚出了什么、三个关键词分别落到哪些主题、主题如何随时间变化、哪些省份更集中”，直接跑 `11` 就行。
-- 如果你已经有 `08` 的 summary，优先用 `--from_summary`，这样最不容易路径对错。
-
-默认命令：
-
-```bash
-.venv/bin/python bert/11_visualize_topic_outputs.py \
-  --from_summary "bert/artifacts/broad_analysis/topic_model_BAAI/topic_model_summary.json"
-```
-
-常用变体：
-
-```bash
-.venv/bin/python bert/11_visualize_topic_outputs.py \
-  --from_summary "bert/artifacts/broad_analysis/topic_model_BAAI/topic_model_summary.json" \
-  --top_n_topics 30 \
-  --top_n_terms 12 \
-  --min_topic_size 300 \
-  --noise_pattern "佛系收|佛系出|中转|抽卡|代肝|黑市|挂卡|求扩"
-```
-
-重点输出：
-
-- `bert/artifacts/broad_analysis/topic_visuals/topic_dashboard.html`
-- `bert/artifacts/broad_analysis/topic_visuals/topic_display_table.csv`
-- `bert/artifacts/broad_analysis/topic_visuals/topic_visualization_summary.json`
-
-补充：
-
-- `topic_dashboard.html` 是唯一入口，不再默认拆成多份附图 HTML。
-- 总览页会直接给出 Topic -1 占比、Top 主题与长尾桶、关键词体量饼图、每期文档量折线。
-- 关键词画像页保留“躺平 / 摆烂 / 佛系”的对照，同时把结果收紧成更适合汇报的堆叠图 + 雷达图。
-- 时间演化页除了重点主题折线，还新增“时段 × 主题”热力图。
-- 地域分布页保留省级热力图，并支持切换到头部主题。
-- 主题浏览页会给出可排序的主题卡片：label、文档数、峰值时间、top terms、sparkline、关键词构成条。
-- `topic_display_table.csv` 是汇报用的展示主题清单，不会覆盖 `08` 的底表。
-- 图表使用 ECharts CDN 资源，打开 HTML 时需要能访问对应脚本地址。
-- 如果你已经在 `topic_info.csv` 里补了 `topic_label_zh`，图里会优先使用人工中文标签；否则会回退到 `topic_terms.csv` 的前几个词。
-
 ## 输出目录规范
 
-推荐把 `08` 和 `11` 的输出目录拆开管理：
+当前建议固定成下面这套：
 
-- `08` 的原始主题模型结果放在 `bert/artifacts/broad_analysis/topic_model/<run_tag>/`
-- `11` 的展示结果放在 `bert/artifacts/broad_analysis/topic_visuals/<run_tag>/`
+- `08` 的当前主结果固定放在 `bert/artifacts/broad_analysis/topic_model_BAAI/`
+- `09` 的当前主结果固定放在 `bert/artifacts/broad_analysis/semantic_analysis/`
+- `10` 的当前主结果固定放在 `bert/artifacts/broad_analysis/drift_analysis/`
+- 带日期或一次性批处理的版本，统一放在 `bert/artifacts/broad_analysis/snapshots/<group>/<run_tag>/`
 
-例如：
+例如，按默认命令顺着跑一遍：
 
 ```bash
 .venv/bin/python bert/08_topic_model_bertopic.py \
-  --output_dir "bert/artifacts/broad_analysis/topic_model/bge_small_v15"
+  --output_dir "bert/artifacts/broad_analysis/topic_model_BAAI"
 
-.venv/bin/python bert/11_visualize_topic_outputs.py \
-  --from_summary "bert/artifacts/broad_analysis/topic_model/bge_small_v15/topic_model_summary.json"
+.venv/bin/python bert/09_keyword_semantic_analysis.py \
+  --output_dir "bert/artifacts/broad_analysis/semantic_analysis"
+
+.venv/bin/python bert/10_concept_drift_analysis.py \
+  --output_dir "bert/artifacts/broad_analysis/drift_analysis"
 ```
 
 补充说明：
 
-- 如果 `--from_summary` 指向的是规范目录 `topic_model/<run_tag>/topic_model_summary.json`，`11` 默认会把输出落到对应的 `topic_visuals/<run_tag>/`
-- 如果 `--from_summary` 指向的是历史平铺目录，例如 `topic_model_BAAI/topic_model_summary.json`，`11` 默认会把输出落到同级的 `topic_visuals/`
-- 历史遗留目录如 `topic_model_BAAI`、`topic_visuals_BAAI`、`topic_interpretability_BAAI` 建议归档到 `bert/artifacts/broad_analysis/legacy/` 或按 `<run_tag>` 重新整理
-- 新版 `11` 的 `topic_dashboard.html` 已覆盖旧版 `topic_prevalence`、`topic_keyword_alignment`、`topic_evolution_heatmap`、`topic_term_detail`、`topic_wordclouds` 的主要信息点
+- 如果你跑的是截断月份、overnight 或 dated 版本，让脚本把结果先写进 `snapshots/`，再由 `bert/scripts/organize_artifacts.py` 补 canonical 当前目录。
+- `09_prepare_semantic_midterm.py` 默认读取 canonical 的 `semantic_analysis/`；如果你要整理某次 snapshot，显式传它的 `--semantic_dir` 即可。
+- `broad_analysis/overview/manifest.json` 和 `broad_analysis/README.md` 会优先指向这三个 canonical 目录。
 
 ## 主题清理建议
 
@@ -584,8 +559,17 @@ cp bert/llm_label_local.example.toml bert/llm_label_local.toml
 对 280 万量级语料来说，`--min_topic_size 30` 往往偏小，容易切出大量碎片 topic。比较稳妥的起点：
 
 - `--min_topic_size 300`
+- `--hdbscan_min_samples 50` 到 `100`
 - `--nr_topics 60` 或 `auto`
-- `--umap_n_neighbors 50`
+- `--umap_n_neighbors 50` 到 `100`
+
+如果你的最终目标不是“保留几十上百个细 topic”，而是要得到 `8-15` 个能直接讲趋势的大主题，更接近的实践顺序是：
+
+1. 先把原始聚类收紧，减少碎片：增大 `--min_topic_size`、`--umap_n_neighbors`
+2. 再把 outlier 回填：`--outlier_reduction_strategy c-tf-idf+distributions`
+3. 最后再把主题数压到汇报口径：`--nr_topics 8~15`
+
+这样通常比一上来就强行把 `nr_topics` 设成 `8` 更稳。
 
 ### B. 扩停用词表
 

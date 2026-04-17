@@ -21,6 +21,7 @@ from lib.analysis_utils import (
     save_dataframe,
     sort_period_labels,
 )
+from lib.broad_analysis_layout import sync_semantic_output_metadata
 from lib.broad_analysis_overview import refresh_broad_analysis_overview
 from lib.io_utils import save_json
 
@@ -426,6 +427,7 @@ def main() -> None:
         "semantic_neighbor_row_count": int(len(semantic_neighbors_df)),
     }
     save_json(summary_path, summary)
+    sync_semantic_output_metadata(output_dir)
     try:
         refresh_broad_analysis_overview(output_dir)
     except Exception as exc:

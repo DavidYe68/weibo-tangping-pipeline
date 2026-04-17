@@ -12,6 +12,19 @@ from pathlib import Path
 
 import pandas as pd
 
+SCRIPT_ROOT = Path(__file__).resolve().parents[1]
+if str(SCRIPT_ROOT) not in sys.path:
+    sys.path.insert(0, str(SCRIPT_ROOT))
+
+from lib.broad_analysis_layout import (
+    CANONICAL_DRIFT_DIR,
+    CANONICAL_SEMANTIC_DIR,
+    copy_output_bundle,
+    sync_drift_output_metadata,
+    sync_semantic_output_metadata,
+)
+from lib.broad_analysis_overview import refresh_broad_analysis_overview
+
 
 DEFAULT_ANALYSIS_BASE = "bert/artifacts/broad_analysis/analysis_base.parquet"
 DEFAULT_TOPIC_MODEL_DIR = "bert/artifacts/broad_analysis/topic_model_BAAI"
@@ -373,6 +386,19 @@ def main() -> int:
             stage_key="running_10_concept_drift",
         )
 
+        canonical_root = repo_root / "bert" / "artifacts" / "broad_analysis"
+        canonical_semantic_dir = copy_output_bundle(
+            semantic_output_dir,
+            canonical_root / CANONICAL_SEMANTIC_DIR,
+        )
+        canonical_drift_dir = copy_output_bundle(
+            drift_output_dir,
+            canonical_root / CANONICAL_DRIFT_DIR,
+        )
+        sync_semantic_output_metadata(canonical_semantic_dir)
+        sync_drift_output_metadata(canonical_drift_dir)
+        refresh_broad_analysis_overview(canonical_root)
+
         state["status"] = "completed"
         state["stage"] = "completed"
         state["finished_at"] = datetime.now().isoformat(timespec="seconds")
@@ -392,6 +418,8 @@ def main() -> int:
             "filtered_analysis_base": filtered_analysis_base,
             "semantic_output_dir": semantic_output_dir,
             "drift_output_dir": drift_output_dir,
+            "canonical_semantic_output_dir": canonical_semantic_dir,
+            "canonical_drift_output_dir": canonical_drift_dir,
             "trimmed_inputs": state["trimmed_inputs"],
         }
         save_state(summary_path, summary)

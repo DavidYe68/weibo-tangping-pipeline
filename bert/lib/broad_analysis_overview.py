@@ -6,6 +6,11 @@ from typing import Any
 
 import pandas as pd
 
+from lib.broad_analysis_layout import (
+    CANONICAL_DRIFT_DIR,
+    CANONICAL_SEMANTIC_DIR,
+    CANONICAL_TOPIC_MODEL_DIR,
+)
 from lib.io_utils import ensure_parent, save_json
 
 
@@ -14,10 +19,6 @@ SNAPSHOT_GROUPS = (
     ("drift_analysis_", "drift"),
     ("overnight_09_10_", "overnight"),
 )
-CANONICAL_TOPIC_MODEL_DIR = "topic_model_BAAI"
-CANONICAL_SEMANTIC_DIR = "semantic_analysis"
-CANONICAL_DRIFT_DIR = "drift_analysis"
-VISUALIZATION_DIR_CANDIDATES = ("topic_visualization", "topic_visuals")
 
 
 def find_broad_analysis_root(path: str | Path) -> Path | None:
@@ -101,29 +102,6 @@ def _resolve_output_dir(root: Path, canonical_name: str, snapshot_group: str) ->
             return legacy_candidates[-1], legacy_candidates[-1].name
 
     return None, ""
-
-
-def _resolve_visualization_dir(root: Path) -> tuple[Path | None, str]:
-    for candidate in VISUALIZATION_DIR_CANDIDATES:
-        path = root / candidate
-        if path.is_dir():
-            return path, candidate
-    return None, ""
-
-
-def _resolve_visualization_dashboard_path(visualization_dir: Path, summary: dict[str, Any], root: Path) -> str:
-    candidates = [
-        visualization_dir / "topic_midterm_dashboard.html",
-        visualization_dir / "topic_dashboard.html",
-    ]
-    dashboard_path = summary.get("dashboard_path")
-    if dashboard_path:
-        candidates.append(Path(str(dashboard_path)))
-
-    for candidate in candidates:
-        if candidate.exists():
-            return _relative_to_root(candidate, root)
-    return ""
 
 
 def _build_topic_headlines(topic_model_dir: Path, output_path: Path) -> dict[str, Any]:
@@ -348,12 +326,6 @@ def _write_readme(root: Path, manifest: dict[str, Any]) -> Path:
             f"{len(first_look) + 1}. 最后看 `overview/{Path(overview['drift_watchlist_path']).name}`：只保留最明显的漂移告警。"
         )
 
-    visualization = manifest.get("visualization", {})
-    if visualization.get("dashboard_path"):
-        first_look.append(
-            f"{len(first_look) + 1}. 如果想看图，再打开 `{visualization['dashboard_path']}`。"
-        )
-
     if first_look:
         lines.extend(first_look)
     else:
@@ -370,9 +342,6 @@ def _write_readme(root: Path, manifest: dict[str, Any]) -> Path:
         ]
     )
 
-    if visualization.get("path_label"):
-        lines.append(f"- `{visualization['path_label']}`: 主题可视化 bundle。")
-
     snapshots = manifest.get("snapshots", [])
     lines.extend(["", "## Snapshots"])
     if snapshots:
@@ -381,14 +350,14 @@ def _write_readme(root: Path, manifest: dict[str, Any]) -> Path:
         if len(snapshots) > 12:
             lines.append(f"- 其余 {len(snapshots) - 12} 个快照已省略，详见 `overview/manifest.json`。")
     else:
-        lines.append("- 当前没有额外快照目录。")
+        lines.append("- 当前没有额外快照目录；如果需要旧快照，请看 `../_unused/`。")
 
     lines.extend(
         [
             "",
             "## Notes",
             "- `overview/` 只放入口和浓缩表，不替代原始明细。",
-            "- `legacy/` 继续保留旧版结果，默认不作为第一阅读入口。",
+            "- 当前主目录只保留正在使用的分析结果；旧版结果和训练产物统一放在 `../_unused/`。",
         ]
     )
     readme_path.write_text("\n".join(lines) + "\n", encoding="utf-8")
@@ -419,13 +388,10 @@ def refresh_broad_analysis_overview(root: str | Path) -> dict[str, Any]:
         CANONICAL_DRIFT_DIR,
         "drift",
     )
-    visualization_dir, visualization_label = _resolve_visualization_dir(broad_analysis_root)
-
     topic_headlines = _build_topic_headlines(topic_model_dir, overview_dir / "topic_headlines.csv") if topic_model_dir else {}
     semantic_headlines = _build_semantic_headlines(semantic_dir, overview_dir / "semantic_headlines.csv") if semantic_dir else {}
     drift_watchlist = _build_drift_watchlist(drift_dir, overview_dir / "drift_watchlist.csv") if drift_dir else {}
 
-    visualization_summary = _safe_read_json(visualization_dir / "topic_visualization_summary.json") if visualization_dir else {}
     snapshots = _collect_snapshot_dirs(broad_analysis_root)
 
     manifest: dict[str, Any] = {
@@ -448,15 +414,6 @@ def refresh_broad_analysis_overview(root: str | Path) -> dict[str, Any]:
         "drift": {
             "path_label": drift_label,
             "path": _relative_to_root(drift_dir, broad_analysis_root) if drift_dir else "",
-        },
-        "visualization": {
-            "path_label": visualization_label,
-            "path": _relative_to_root(visualization_dir, broad_analysis_root) if visualization_dir else "",
-            "dashboard_path": (
-                _resolve_visualization_dashboard_path(visualization_dir, visualization_summary, broad_analysis_root)
-                if visualization_dir
-                else ""
-            ),
         },
         "overview": {
             "topic_headlines_path": topic_headlines.get("path", ""),

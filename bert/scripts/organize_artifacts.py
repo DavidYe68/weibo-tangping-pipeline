@@ -12,6 +12,14 @@ SCRIPT_ROOT = Path(__file__).resolve().parents[1]
 if str(SCRIPT_ROOT) not in sys.path:
     sys.path.insert(0, str(SCRIPT_ROOT))
 
+from lib.broad_analysis_layout import (
+    CANONICAL_DRIFT_DIR,
+    CANONICAL_SEMANTIC_DIR,
+    CANONICAL_TOPIC_MODEL_DIR,
+    ensure_canonical_output_from_latest_snapshot,
+    latest_snapshot_dir,
+    sync_all_analysis_output_metadata,
+)
 from lib.broad_analysis_overview import refresh_broad_analysis_overview
 
 
@@ -20,21 +28,13 @@ DUAL_LABEL_RUN_MARKERS = {"broad", "strict", "shared", "compare", "inspect"}
 SINGLE_LABEL_RUN_MARKERS = {"best_model", "metrics.json"}
 LEGACY_BROAD_ANALYSIS_DIRS = (
     "topic_interpretability_BAAI",
-    "topic_visuals",
-    "topic_visuals_BAAI",
 )
-PREFERRED_TOPIC_MODEL_DIRNAME = "topic_model_BAAI"
+PREFERRED_TOPIC_MODEL_DIRNAME = CANONICAL_TOPIC_MODEL_DIR
 TOPIC_MODEL_BUNDLE_MARKERS = (
     "topic_model_summary.json",
     "topic_info.csv",
     "topic_terms.csv",
     "checkpoints",
-)
-VISUALIZATION_BUNDLE_MARKERS = (
-    "topic_midterm_dashboard.html",
-    "topic_visualization_summary.json",
-    "html",
-    "tables",
 )
 SNAPSHOT_MOVE_RULES = (
     ("semantic_analysis_", "semantic"),
@@ -42,6 +42,12 @@ SNAPSHOT_MOVE_RULES = (
     ("overnight_09_10_", "overnight"),
 )
 NON_ALNUM_RE = re.compile(r"[^A-Za-z0-9._-]+")
+VISUALIZATION_DIR_NAMES = (
+    "topic_visualization",
+    "topic_visuals",
+    "topic_visuals_2",
+    "topic_visuals_BAAI",
+)
 
 
 def parse_args() -> argparse.Namespace:
@@ -311,9 +317,48 @@ def sync_preferred_topic_model_metadata(artifacts_dir: Path, *, dry_run: bool) -
             write_json(checkpoint_manifest_path, checkpoint_manifest, dry_run=dry_run)
 
 
-def flatten_visualization_bundle(artifacts_dir: Path, *, dry_run: bool) -> None:
-    visualization_dir = artifacts_dir / "broad_analysis" / "topic_visualization"
-    flatten_nested_bundle(visualization_dir, markers=VISUALIZATION_BUNDLE_MARKERS, dry_run=dry_run)
+def ensure_canonical_analysis_outputs(artifacts_dir: Path, *, dry_run: bool) -> None:
+    if dry_run:
+        broad_analysis_dir = artifacts_dir / "broad_analysis"
+        for snapshot_group, canonical_name in (("semantic", CANONICAL_SEMANTIC_DIR), ("drift", CANONICAL_DRIFT_DIR)):
+            canonical_dir = broad_analysis_dir / canonical_name
+            if canonical_dir.is_dir():
+                continue
+            snapshot_dir = latest_snapshot_dir(broad_analysis_dir, snapshot_group)
+            if snapshot_dir is not None:
+                emit(f"Would copy latest {snapshot_group} snapshot {snapshot_dir} into {canonical_dir}")
+        return
+
+    broad_analysis_dir = artifacts_dir / "broad_analysis"
+    ensure_canonical_output_from_latest_snapshot(
+        broad_analysis_dir,
+        snapshot_group="semantic",
+        canonical_dir_name=CANONICAL_SEMANTIC_DIR,
+    )
+    ensure_canonical_output_from_latest_snapshot(
+        broad_analysis_dir,
+        snapshot_group="drift",
+        canonical_dir_name=CANONICAL_DRIFT_DIR,
+    )
+    sync_all_analysis_output_metadata(broad_analysis_dir)
+
+
+def remove_visualization_outputs(artifacts_dir: Path, *, dry_run: bool) -> None:
+    broad_analysis_dir = artifacts_dir / "broad_analysis"
+    if not broad_analysis_dir.is_dir():
+        return
+
+    candidates = [broad_analysis_dir / name for name in VISUALIZATION_DIR_NAMES]
+    candidates.extend((broad_analysis_dir / "legacy" / name) for name in VISUALIZATION_DIR_NAMES)
+    for path in candidates:
+        if not path.exists():
+            continue
+        emit(f"Remove {path}")
+        if not dry_run:
+            if path.is_dir():
+                shutil.rmtree(path)
+            else:
+                path.unlink()
 
 
 def write_layout_summary(artifacts_dir: Path, *, dry_run: bool) -> None:
@@ -325,7 +370,8 @@ def write_layout_summary(artifacts_dir: Path, *, dry_run: bool) -> None:
             "- `broad_analysis/README.md`: start-here guide for broad-analysis outputs.",
             "- `broad_analysis/overview/`: condensed tables and the generated manifest.",
             "- `broad_analysis/topic_model_BAAI/`: canonical BERTopic outputs.",
-            "- `broad_analysis/topic_visualization/`: canonical topic-visualization bundle.",
+            "- `broad_analysis/semantic_analysis/`: canonical 09 semantic-analysis outputs.",
+            "- `broad_analysis/drift_analysis/`: canonical 10 drift-analysis outputs.",
             "- `broad_analysis/snapshots/`: dated or one-off analysis snapshots.",
             "- `broad_analysis/legacy/`: older or alternate topic-analysis outputs kept for reference.",
             "- `runs/dual_label/`: archived dual-label training runs.",
@@ -355,7 +401,8 @@ def main() -> None:
     restore_preferred_topic_model(artifacts_dir, dry_run=args.dry_run)
     archive_nonpreferred_topic_model(artifacts_dir, dry_run=args.dry_run)
     sync_preferred_topic_model_metadata(artifacts_dir, dry_run=args.dry_run)
-    flatten_visualization_bundle(artifacts_dir, dry_run=args.dry_run)
+    ensure_canonical_analysis_outputs(artifacts_dir, dry_run=args.dry_run)
+    remove_visualization_outputs(artifacts_dir, dry_run=args.dry_run)
     write_layout_summary(artifacts_dir, dry_run=args.dry_run)
     if not args.dry_run:
         refresh_broad_analysis_overview(artifacts_dir / "broad_analysis")
