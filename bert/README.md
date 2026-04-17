@@ -50,6 +50,8 @@ bert/artifacts/
 │   ├── dual_label/      dual-label 训练 run
 │   └── single_label/    single-label 训练 run
 └── broad_analysis/      07-11 分析链的标准输出
+    ├── overview/        只保留“先看什么”的浓缩表和 manifest
+    ├── snapshots/       带日期或一次性批处理的快照输出
     └── legacy/          已淘汰或重复的历史输出
 ```
 
@@ -57,7 +59,9 @@ bert/artifacts/
 
 - `04` / `05` 的新训练产物，优先直接写到 `bert/artifacts/runs/...`
 - `07`-`11` 的分析产物，继续放在 `bert/artifacts/broad_analysis/`
+- `broad_analysis/README.md` + `broad_analysis/overview/` 是默认阅读入口；原始明细继续保留在各自目录
 - BERTopic 主结果目录优先使用 `bert/artifacts/broad_analysis/topic_model_BAAI/`
+- 带日期后缀或 overnight 的分析批次，优先放进 `bert/artifacts/broad_analysis/snapshots/`
 - 历史遗留的旧版 topic 可视化或按 embedding 名额外分出的目录，统一挪到 `bert/artifacts/broad_analysis/legacy/`
 
 仓库里带了一个可重复执行的整理脚本：
@@ -69,6 +73,7 @@ bert/artifacts/
 说明：
 
 - 这个脚本会把顶层的训练 run 归档到 `runs/`
+- 会把 dated / overnight 的 broad-analysis 输出归档到 `snapshots/`
 - 会把旧版或重复的 broad-analysis 输出归到 `legacy/`
 - 如果 `topic_visualization/` 里只有一层模型名子目录，会把 bundle 摊平回标准位置
 - 脚本默认值里仍保留了部分旧路径名以兼容老命令；如果你想从一开始就保持整洁，训练时请显式把输出目录写到 `runs/`

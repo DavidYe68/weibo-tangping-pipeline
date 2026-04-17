@@ -5,7 +5,14 @@ import argparse
 import json
 import re
 import shutil
+import sys
 from pathlib import Path
+
+SCRIPT_ROOT = Path(__file__).resolve().parents[1]
+if str(SCRIPT_ROOT) not in sys.path:
+    sys.path.insert(0, str(SCRIPT_ROOT))
+
+from lib.broad_analysis_overview import refresh_broad_analysis_overview
 
 
 CANONICAL_TOP_LEVEL_DIRS = {"broad_analysis", "runs"}
@@ -28,6 +35,11 @@ VISUALIZATION_BUNDLE_MARKERS = (
     "topic_visualization_summary.json",
     "html",
     "tables",
+)
+SNAPSHOT_MOVE_RULES = (
+    ("semantic_analysis_", "semantic"),
+    ("drift_analysis_", "drift"),
+    ("overnight_09_10_", "overnight"),
 )
 NON_ALNUM_RE = re.compile(r"[^A-Za-z0-9._-]+")
 
@@ -81,6 +93,16 @@ def move_path(source: Path, target: Path, *, dry_run: bool) -> None:
 
     target.parent.mkdir(parents=True, exist_ok=True)
     shutil.move(str(source), str(target))
+
+
+def next_available_target(path: Path) -> Path:
+    if not path.exists():
+        return path
+    for index in range(2, 1000):
+        candidate = path.parent / f"{path.name}_{index}"
+        if not candidate.exists():
+            return candidate
+    raise FileExistsError(f"Could not find available target path for {path}")
 
 
 def merge_directory_contents(source_dir: Path, target_dir: Path, *, dry_run: bool) -> None:
@@ -145,7 +167,24 @@ def archive_legacy_broad_analysis_outputs(artifacts_dir: Path, *, dry_run: bool)
     for name in LEGACY_BROAD_ANALYSIS_DIRS:
         source = broad_analysis_dir / name
         if source.exists():
-            move_path(source, legacy_root / name, dry_run=dry_run)
+            move_path(source, next_available_target(legacy_root / name), dry_run=dry_run)
+
+
+def relocate_snapshot_outputs(artifacts_dir: Path, *, dry_run: bool) -> None:
+    broad_analysis_dir = artifacts_dir / "broad_analysis"
+    if not broad_analysis_dir.is_dir():
+        return
+
+    snapshot_root = broad_analysis_dir / "snapshots"
+    for prefix, group in SNAPSHOT_MOVE_RULES:
+        for source in sorted(broad_analysis_dir.glob(f"{prefix}*"), key=lambda item: item.name):
+            if not source.is_dir():
+                continue
+            suffix = source.name.removeprefix(prefix)
+            target = next_available_target(snapshot_root / group / suffix)
+            if source == target:
+                continue
+            move_path(source, target, dry_run=dry_run)
 
 
 def flatten_nested_bundle(bundle_dir: Path, *, markers: tuple[str, ...], dry_run: bool) -> None:
@@ -283,8 +322,11 @@ def write_layout_summary(artifacts_dir: Path, *, dry_run: bool) -> None:
         [
             "# Artifact Layout",
             "",
+            "- `broad_analysis/README.md`: start-here guide for broad-analysis outputs.",
+            "- `broad_analysis/overview/`: condensed tables and the generated manifest.",
             "- `broad_analysis/topic_model_BAAI/`: canonical BERTopic outputs.",
             "- `broad_analysis/topic_visualization/`: canonical topic-visualization bundle.",
+            "- `broad_analysis/snapshots/`: dated or one-off analysis snapshots.",
             "- `broad_analysis/legacy/`: older or alternate topic-analysis outputs kept for reference.",
             "- `runs/dual_label/`: archived dual-label training runs.",
             "- `runs/single_label/`: archived single-label training runs.",
@@ -309,11 +351,14 @@ def main() -> None:
     cleanup_ds_store(artifacts_dir, dry_run=args.dry_run)
     relocate_training_runs(artifacts_dir, dry_run=args.dry_run)
     archive_legacy_broad_analysis_outputs(artifacts_dir, dry_run=args.dry_run)
+    relocate_snapshot_outputs(artifacts_dir, dry_run=args.dry_run)
     restore_preferred_topic_model(artifacts_dir, dry_run=args.dry_run)
     archive_nonpreferred_topic_model(artifacts_dir, dry_run=args.dry_run)
     sync_preferred_topic_model_metadata(artifacts_dir, dry_run=args.dry_run)
     flatten_visualization_bundle(artifacts_dir, dry_run=args.dry_run)
     write_layout_summary(artifacts_dir, dry_run=args.dry_run)
+    if not args.dry_run:
+        refresh_broad_analysis_overview(artifacts_dir / "broad_analysis")
     emit("Done")
 
 

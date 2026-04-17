@@ -21,6 +21,7 @@ from lib.analysis_utils import (
     save_dataframe,
     sort_period_labels,
 )
+from lib.broad_analysis_overview import refresh_broad_analysis_overview
 from lib.io_utils import save_json
 
 DEFAULT_STOPWORDS_PATH = "bert/config/topic_stopwords.txt"
@@ -425,6 +426,10 @@ def main() -> None:
         "semantic_neighbor_row_count": int(len(semantic_neighbors_df)),
     }
     save_json(summary_path, summary)
+    try:
+        refresh_broad_analysis_overview(output_dir)
+    except Exception as exc:
+        emit(f"Skipped broad-analysis overview refresh: {exc}")
     emit(f"Saved outputs in {format_elapsed(save_start)}")
     emit(f"Saved semantic-analysis outputs to {output_dir}")
     emit(f"Total runtime: {format_elapsed(total_start)}")

@@ -245,15 +245,16 @@ def main() -> int:
     args = parse_args()
     repo_root = resolve_repo_root()
     suffix = f"through_{args.max_month.replace('-', '_')}"
+    snapshot_root = repo_root / "bert" / "artifacts" / "broad_analysis" / "snapshots"
 
-    run_dir = ensure_path(args.run_dir, repo_root / "bert" / "artifacts" / "broad_analysis" / f"overnight_09_10_{suffix}")
+    run_dir = ensure_path(args.run_dir, snapshot_root / "overnight" / suffix)
     semantic_output_dir = ensure_path(
         args.semantic_output_dir,
-        repo_root / "bert" / "artifacts" / "broad_analysis" / f"semantic_analysis_{suffix}",
+        snapshot_root / "semantic" / suffix,
     )
     drift_output_dir = ensure_path(
         args.drift_output_dir,
-        repo_root / "bert" / "artifacts" / "broad_analysis" / f"drift_analysis_{suffix}",
+        snapshot_root / "drift" / suffix,
     )
     state_path = ensure_path(args.state_path, run_dir / "state.json")
     summary_path = run_dir / "summary.json"

@@ -14,6 +14,7 @@ from lib.analysis_utils import (
     save_dataframe,
     sort_period_labels,
 )
+from lib.broad_analysis_overview import refresh_broad_analysis_overview
 from lib.io_utils import save_json
 
 
@@ -389,6 +390,10 @@ def main() -> None:
         "topic_share_change_by_ip_and_keyword_row_count": int(len(topic_change_by_ip_keyword_df)),
     }
     save_json(summary_path, summary)
+    try:
+        refresh_broad_analysis_overview(output_dir)
+    except Exception as exc:
+        print(f"[drift] Skipped broad-analysis overview refresh: {exc}", flush=True)
     print(f"[drift] Saved outputs in {format_elapsed(save_start)}", flush=True)
     print(f"[drift] Total runtime: {format_elapsed(total_start)}", flush=True)
 

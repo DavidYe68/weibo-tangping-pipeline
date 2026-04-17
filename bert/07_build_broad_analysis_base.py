@@ -11,6 +11,7 @@ from lib.analysis_utils import (
     resolve_emit,
     save_dataframe,
 )
+from lib.broad_analysis_overview import refresh_broad_analysis_overview
 from lib.io_utils import save_json
 
 
@@ -118,6 +119,11 @@ def main() -> None:
         "metadata": metadata,
     }
     save_json(report_path, report)
+
+    try:
+        refresh_broad_analysis_overview(output_path)
+    except Exception as exc:
+        emit(f"Skipped broad-analysis overview refresh: {exc}")
 
     emit(f"Saved analysis base to {output_path}")
     emit(f"Saved report to {report_path}")
