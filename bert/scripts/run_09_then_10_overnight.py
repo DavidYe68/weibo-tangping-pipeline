@@ -21,6 +21,7 @@ from lib.broad_analysis_layout import (
     CANONICAL_SEMANTIC_DIR,
     copy_output_bundle,
     resolve_topic_model_artifact,
+    semantic_output_paths,
     sync_drift_output_metadata,
     sync_semantic_output_metadata,
 )
@@ -356,14 +357,15 @@ def main() -> int:
             state_path=state_path,
             stage_key="running_09_semantic_analysis",
         )
+        semantic_paths = semantic_output_paths(semantic_output_dir)
 
         drift_cmd = [
             str(python_bin),
             str((repo_root / "bert" / "10_concept_drift_analysis.py").resolve()),
             "--cooccurrence_path",
-            str(semantic_output_dir / "keyword_cooccurrence.csv"),
+            str(semantic_paths["cooccurrence_path"]),
             "--neighbor_path",
-            str(semantic_output_dir / "keyword_semantic_neighbors.csv"),
+            str(semantic_paths["semantic_neighbors_path"]),
             "--topic_share_path",
             str((run_dir / "trimmed_topic_inputs" / "topic_share_by_period_and_keyword.csv").resolve()),
             "--overall_topic_share_path",

@@ -12,6 +12,7 @@ models/
 AI/
 .tools/
 .tools-cache/
+.claude/
 
 raw/
 archive/

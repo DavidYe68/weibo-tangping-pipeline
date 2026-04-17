@@ -427,6 +427,7 @@ cp bert/llm_label_local.example.toml bert/llm_label_local.toml
 - `bert/artifacts/broad_analysis/topic_model_BAAI/viz_inputs/topic_share_by_ip.csv`
 - `bert/artifacts/broad_analysis/topic_model_BAAI/viz_inputs/topic_share_by_period_and_ip.csv`
 - `bert/artifacts/broad_analysis/topic_model_BAAI/viz_inputs/topic_share_by_period_and_ip_and_keyword.csv`
+- 如果启用 `--save_model`，模型会保存到 `bert/artifacts/broad_analysis/topic_model_BAAI/viz_inputs/model/`
 
 补充：
 

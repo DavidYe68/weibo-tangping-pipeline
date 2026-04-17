@@ -265,7 +265,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--save_model",
         action="store_true",
-        help="Persist the BERTopic model under output_dir/model.",
+        help="Persist the BERTopic model under output_dir/viz_inputs/model.",
     )
     parser.add_argument(
         "--device",
