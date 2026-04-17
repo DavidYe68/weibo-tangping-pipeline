@@ -15,7 +15,7 @@ from lib.analysis_utils import (
     save_dataframe,
     sort_period_labels,
 )
-from lib.broad_analysis_layout import sync_drift_output_metadata
+from lib.broad_analysis_layout import drift_output_paths, sync_drift_output_metadata
 from lib.broad_analysis_overview import refresh_broad_analysis_overview
 from lib.io_utils import save_json
 
@@ -56,32 +56,32 @@ def parse_args() -> argparse.Namespace:
     )
     parser.add_argument(
         "--cooccurrence_path",
-        default="bert/artifacts/broad_analysis/semantic_analysis/keyword_cooccurrence.csv",
+        default="bert/artifacts/broad_analysis/semantic_analysis/viz_inputs/keyword_cooccurrence.csv",
         help="Path to keyword co-occurrence output.",
     )
     parser.add_argument(
         "--neighbor_path",
-        default="bert/artifacts/broad_analysis/semantic_analysis/keyword_semantic_neighbors.csv",
+        default="bert/artifacts/broad_analysis/semantic_analysis/viz_inputs/keyword_semantic_neighbors.csv",
         help="Path to keyword semantic-neighbor output.",
     )
     parser.add_argument(
         "--topic_share_path",
-        default="bert/artifacts/broad_analysis/topic_model_BAAI/topic_share_by_period_and_keyword.csv",
+        default="bert/artifacts/broad_analysis/topic_model_BAAI/readouts/topic_share_by_period_and_keyword.csv",
         help="Path to keyword-by-period topic share output.",
     )
     parser.add_argument(
         "--overall_topic_share_path",
-        default="bert/artifacts/broad_analysis/topic_model_BAAI/topic_share_by_period.csv",
+        default="bert/artifacts/broad_analysis/topic_model_BAAI/readouts/topic_share_by_period.csv",
         help="Path to overall topic-share output.",
     )
     parser.add_argument(
         "--topic_share_by_period_and_ip_path",
-        default="bert/artifacts/broad_analysis/topic_model_BAAI/topic_share_by_period_and_ip.csv",
+        default="bert/artifacts/broad_analysis/topic_model_BAAI/viz_inputs/topic_share_by_period_and_ip.csv",
         help="Path to IP-by-period topic share output.",
     )
     parser.add_argument(
         "--topic_share_by_period_and_ip_and_keyword_path",
-        default="bert/artifacts/broad_analysis/topic_model_BAAI/topic_share_by_period_and_ip_and_keyword.csv",
+        default="bert/artifacts/broad_analysis/topic_model_BAAI/viz_inputs/topic_share_by_period_and_ip_and_keyword.csv",
         help="Path to keyword + IP + period topic share output.",
     )
     parser.add_argument(
@@ -382,17 +382,20 @@ def main() -> None:
 
     output_dir = Path(args.output_dir)
     output_dir.mkdir(parents=True, exist_ok=True)
-    collocation_path = output_dir / "keyword_collocation_drift.csv"
-    neighbor_path = output_dir / "keyword_neighbor_drift.csv"
-    topic_path = output_dir / "topic_drift_by_keyword.csv"
-    topic_change_path = output_dir / "topic_share_change_by_keyword.csv"
-    overall_topic_path = output_dir / "topic_drift_overall.csv"
-    overall_topic_change_path = output_dir / "topic_share_change_overall.csv"
-    topic_by_ip_path = output_dir / "topic_drift_by_ip.csv"
-    topic_change_by_ip_path = output_dir / "topic_share_change_by_ip.csv"
-    topic_by_ip_keyword_path = output_dir / "topic_drift_by_ip_and_keyword.csv"
-    topic_change_by_ip_keyword_path = output_dir / "topic_share_change_by_ip_and_keyword.csv"
-    summary_path = output_dir / "drift_analysis_summary.json"
+    paths = drift_output_paths(output_dir)
+    paths["readouts_dir"].mkdir(parents=True, exist_ok=True)
+    paths["viz_inputs_dir"].mkdir(parents=True, exist_ok=True)
+    collocation_path = paths["collocation_drift_path"]
+    neighbor_path = paths["neighbor_drift_path"]
+    topic_path = paths["topic_drift_path"]
+    topic_change_path = paths["topic_share_change_path"]
+    overall_topic_path = paths["overall_topic_drift_path"]
+    overall_topic_change_path = paths["overall_topic_change_path"]
+    topic_by_ip_path = paths["topic_drift_by_ip_path"]
+    topic_change_by_ip_path = paths["topic_share_change_by_ip_path"]
+    topic_by_ip_keyword_path = paths["topic_drift_by_ip_and_keyword_path"]
+    topic_change_by_ip_keyword_path = paths["topic_share_change_by_ip_and_keyword_path"]
+    summary_path = paths["summary_path"]
 
     save_start = time.perf_counter()
     print(f"[drift] Saving outputs under {output_dir}", flush=True)
@@ -410,6 +413,9 @@ def main() -> None:
     summary = {
         "selected_keywords": selected_keywords,
         "time_granularity": args.time_granularity,
+        "output_dir": str(output_dir.resolve()),
+        "readouts_dir": str(paths["readouts_dir"].resolve()),
+        "viz_inputs_dir": str(paths["viz_inputs_dir"].resolve()),
         "collocation_drift_path": str(collocation_path.resolve()),
         "neighbor_drift_path": str(neighbor_path.resolve()),
         "topic_drift_path": str(topic_path.resolve()),

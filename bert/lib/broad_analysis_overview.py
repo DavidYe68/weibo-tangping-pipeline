@@ -10,6 +10,9 @@ from lib.broad_analysis_layout import (
     CANONICAL_DRIFT_DIR,
     CANONICAL_SEMANTIC_DIR,
     CANONICAL_TOPIC_MODEL_DIR,
+    resolve_drift_artifact,
+    resolve_semantic_artifact,
+    resolve_topic_model_artifact,
 )
 from lib.io_utils import ensure_parent, save_json
 
@@ -105,10 +108,12 @@ def _resolve_output_dir(root: Path, canonical_name: str, snapshot_group: str) ->
 
 
 def _build_topic_headlines(topic_model_dir: Path, output_path: Path) -> dict[str, Any]:
-    topic_info = _safe_read_csv(topic_model_dir / "topic_info.csv")
-    topic_terms = _safe_read_csv(topic_model_dir / "topic_terms.csv")
-    share_by_period = _safe_read_csv(topic_model_dir / "topic_share_by_period.csv")
-    share_by_period_keyword = _safe_read_csv(topic_model_dir / "topic_share_by_period_and_keyword.csv")
+    topic_info = _safe_read_csv(resolve_topic_model_artifact(topic_model_dir, "topic_info.csv"))
+    topic_terms = _safe_read_csv(resolve_topic_model_artifact(topic_model_dir, "topic_terms.csv"))
+    share_by_period = _safe_read_csv(resolve_topic_model_artifact(topic_model_dir, "topic_share_by_period.csv"))
+    share_by_period_keyword = _safe_read_csv(
+        resolve_topic_model_artifact(topic_model_dir, "topic_share_by_period_and_keyword.csv")
+    )
 
     if topic_info.empty:
         return {}
@@ -196,7 +201,7 @@ def _build_topic_headlines(topic_model_dir: Path, output_path: Path) -> dict[str
 
 
 def _build_semantic_headlines(semantic_dir: Path, output_path: Path) -> dict[str, Any]:
-    cooccurrence = _safe_read_csv(semantic_dir / "keyword_cooccurrence.csv")
+    cooccurrence = _safe_read_csv(resolve_semantic_artifact(semantic_dir, "keyword_cooccurrence.csv"))
     if cooccurrence.empty:
         return {}
 
@@ -243,10 +248,10 @@ def _max_drift_rows(
 
 
 def _build_drift_watchlist(drift_dir: Path, output_path: Path) -> dict[str, Any]:
-    collocation = _safe_read_csv(drift_dir / "keyword_collocation_drift.csv")
-    neighbor = _safe_read_csv(drift_dir / "keyword_neighbor_drift.csv")
-    topic_keyword = _safe_read_csv(drift_dir / "topic_drift_by_keyword.csv")
-    topic_overall = _safe_read_csv(drift_dir / "topic_drift_overall.csv")
+    collocation = _safe_read_csv(resolve_drift_artifact(drift_dir, "keyword_collocation_drift.csv"))
+    neighbor = _safe_read_csv(resolve_drift_artifact(drift_dir, "keyword_neighbor_drift.csv"))
+    topic_keyword = _safe_read_csv(resolve_drift_artifact(drift_dir, "topic_drift_by_keyword.csv"))
+    topic_overall = _safe_read_csv(resolve_drift_artifact(drift_dir, "topic_drift_overall.csv"))
 
     tables = [
         _max_drift_rows(
@@ -357,6 +362,7 @@ def _write_readme(root: Path, manifest: dict[str, Any]) -> Path:
             "",
             "## Notes",
             "- `overview/` 只放入口和浓缩表，不替代原始明细。",
+            "- `topic_model_BAAI/`、`semantic_analysis/`、`drift_analysis/` 内部按 `readouts/` 和 `viz_inputs/` 分层：前者给人直接看，后者给程序或可视化调用。",
             "- 当前主目录只保留正在使用的分析结果；旧版结果和训练产物统一放在 `../_unused/`。",
         ]
     )

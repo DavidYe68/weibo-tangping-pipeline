@@ -15,6 +15,7 @@ from typing import Iterable
 import pandas as pd
 
 from lib.analysis_utils import DEFAULT_ANALYSIS_KEYWORDS, normalize_cli_keywords, save_dataframe
+from lib.broad_analysis_layout import resolve_semantic_artifact, semantic_output_paths
 from lib.io_utils import save_json
 
 DEFAULT_SEMANTIC_DIR = "bert/artifacts/broad_analysis/semantic_analysis"
@@ -93,7 +94,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--output_dir",
         default=None,
-        help="Output directory for the midterm bundle. Defaults to <semantic_dir>/midterm_bundle.",
+        help="Output directory for the midterm bundle. Defaults to <semantic_dir>/readouts/midterm_bundle.",
     )
     parser.add_argument(
         "--keywords",
@@ -162,6 +163,7 @@ def resolve_tokenized_analysis_base_path(summary: dict, semantic_dir: Path) -> P
         if not candidate.is_absolute():
             candidate = (semantic_dir / candidate).resolve()
         candidates.append(candidate)
+    candidates.append(resolve_semantic_artifact(semantic_dir, "tokenized_analysis_base.parquet").resolve())
     candidates.append((semantic_dir / "tokenized_analysis_base.parquet").resolve())
 
     for candidate in candidates:
@@ -631,14 +633,14 @@ def main() -> None:
     if args.output_dir:
         output_dir = Path(args.output_dir)
     else:
-        output_dir = semantic_dir / "midterm_bundle"
+        output_dir = semantic_output_paths(semantic_dir)["midterm_bundle_dir"]
     output_dir.mkdir(parents=True, exist_ok=True)
 
     logger = OperationLogger(output_dir / "semantic_midterm_operation_log.md")
     logger.log(f"Start 09 midterm preparation from {semantic_dir}")
 
-    cooccurrence_path = semantic_dir / "keyword_cooccurrence.csv"
-    neighbors_path = semantic_dir / "keyword_semantic_neighbors.csv"
+    cooccurrence_path = resolve_semantic_artifact(semantic_dir, "keyword_cooccurrence.csv")
+    neighbors_path = resolve_semantic_artifact(semantic_dir, "keyword_semantic_neighbors.csv")
     summary_path = semantic_dir / "semantic_analysis_summary.json"
     if not cooccurrence_path.exists() or not neighbors_path.exists() or not summary_path.exists():
         raise FileNotFoundError("Semantic-analysis inputs are incomplete under the provided semantic_dir.")

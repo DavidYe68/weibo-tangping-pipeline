@@ -16,9 +16,20 @@ from lib.broad_analysis_layout import (
     CANONICAL_DRIFT_DIR,
     CANONICAL_SEMANTIC_DIR,
     CANONICAL_TOPIC_MODEL_DIR,
+    DRIFT_READOUT_FILES,
+    DRIFT_VIZ_FILES,
+    READOUTS_DIRNAME,
+    SEMANTIC_VIZ_FILES,
+    TOPIC_MODEL_READOUT_FILES,
+    TOPIC_MODEL_VIZ_FILES,
+    VIZ_INPUTS_DIRNAME,
+    drift_output_paths,
     ensure_canonical_output_from_latest_snapshot,
     latest_snapshot_dir,
+    semantic_output_paths,
     sync_all_analysis_output_metadata,
+    sync_topic_model_output_metadata,
+    topic_model_output_paths,
 )
 from lib.broad_analysis_overview import refresh_broad_analysis_overview
 
@@ -267,12 +278,83 @@ def archive_nonpreferred_topic_model(artifacts_dir: Path, *, dry_run: bool) -> N
     move_path(source_dir, target_dir, dry_run=dry_run)
 
 
+def relocate_stage_bundle(
+    stage_dir: Path,
+    *,
+    readout_files: tuple[str, ...] = (),
+    viz_files: tuple[str, ...] = (),
+    directory_moves: dict[str, Path] | None = None,
+    dry_run: bool,
+) -> None:
+    if not stage_dir.is_dir():
+        return
+
+    readouts_dir = stage_dir / READOUTS_DIRNAME
+    viz_inputs_dir = stage_dir / VIZ_INPUTS_DIRNAME
+    if readout_files:
+        ensure_dir(readouts_dir, dry_run=dry_run)
+    if viz_files or directory_moves:
+        ensure_dir(viz_inputs_dir, dry_run=dry_run)
+
+    for name in readout_files:
+        source = stage_dir / name
+        if source.exists():
+            move_path(source, readouts_dir / name, dry_run=dry_run)
+
+    for name in viz_files:
+        source = stage_dir / name
+        if source.exists():
+            move_path(source, viz_inputs_dir / name, dry_run=dry_run)
+
+    for name, target in (directory_moves or {}).items():
+        source = stage_dir / name
+        if source.exists() and source != target:
+            move_path(source, target, dry_run=dry_run)
+
+
+def organize_canonical_stage_layouts(artifacts_dir: Path, *, dry_run: bool) -> None:
+    broad_analysis_dir = artifacts_dir / "broad_analysis"
+    if not broad_analysis_dir.is_dir():
+        return
+
+    topic_model_dir = broad_analysis_dir / CANONICAL_TOPIC_MODEL_DIR
+    if topic_model_dir.is_dir():
+        topic_paths = topic_model_output_paths(topic_model_dir)
+        relocate_stage_bundle(
+            topic_model_dir,
+            readout_files=TOPIC_MODEL_READOUT_FILES,
+            viz_files=TOPIC_MODEL_VIZ_FILES,
+            directory_moves={"model": topic_paths["model_dir"]},
+            dry_run=dry_run,
+        )
+
+    semantic_dir = broad_analysis_dir / CANONICAL_SEMANTIC_DIR
+    if semantic_dir.is_dir():
+        semantic_paths = semantic_output_paths(semantic_dir)
+        relocate_stage_bundle(
+            semantic_dir,
+            viz_files=SEMANTIC_VIZ_FILES,
+            directory_moves={"midterm_bundle": semantic_paths["midterm_bundle_dir"]},
+            dry_run=dry_run,
+        )
+
+    drift_dir = broad_analysis_dir / CANONICAL_DRIFT_DIR
+    if drift_dir.is_dir():
+        relocate_stage_bundle(
+            drift_dir,
+            readout_files=DRIFT_READOUT_FILES,
+            viz_files=DRIFT_VIZ_FILES,
+            dry_run=dry_run,
+        )
+
+
 def sync_preferred_topic_model_metadata(artifacts_dir: Path, *, dry_run: bool) -> None:
     topic_model_dir = artifacts_dir / "broad_analysis" / PREFERRED_TOPIC_MODEL_DIRNAME
     if not topic_model_dir.is_dir():
         return
 
-    summary_path = topic_model_dir / "topic_model_summary.json"
+    topic_paths = topic_model_output_paths(topic_model_dir)
+    summary_path = topic_paths["summary_path"]
     checkpoint_manifest_path = topic_model_dir / "checkpoints" / "checkpoint_manifest.json"
     output_dir = topic_model_dir.resolve()
     checkpoint_dir = (topic_model_dir / "checkpoints").resolve()
@@ -283,20 +365,27 @@ def sync_preferred_topic_model_metadata(artifacts_dir: Path, *, dry_run: bool) -
             summary.update(
                 {
                     "output_dir": str(output_dir),
+                    "readouts_dir": str(topic_paths["readouts_dir"].resolve()),
+                    "viz_inputs_dir": str(topic_paths["viz_inputs_dir"].resolve()),
                     "checkpoint_dir": str(checkpoint_dir),
                     "embeddings_checkpoint_path": str(checkpoint_dir / "document_embeddings.npy"),
                     "reduced_embeddings_checkpoint_path": str(checkpoint_dir / "reduced_embeddings.npy"),
                     "reducer_model_checkpoint_path": str(checkpoint_dir / "dimensionality_reduction_model.pkl"),
                     "filtered_documents_checkpoint_path": str(checkpoint_dir / "filtered_documents.parquet"),
                     "checkpoint_manifest_path": str(checkpoint_dir / "checkpoint_manifest.json"),
-                    "documents_path": str(output_dir / "document_topics.parquet"),
-                    "topic_info_path": str(output_dir / "topic_info.csv"),
-                    "topic_terms_path": str(output_dir / "topic_terms.csv"),
-                    "topic_share_by_period_path": str(output_dir / "topic_share_by_period.csv"),
-                    "topic_share_by_period_and_keyword_path": str(output_dir / "topic_share_by_period_and_keyword.csv"),
-                    "topic_share_by_ip_path": str(output_dir / "topic_share_by_ip.csv"),
-                    "topic_share_by_period_and_ip_path": str(output_dir / "topic_share_by_period_and_ip.csv"),
-                    "topic_share_by_period_and_ip_and_keyword_path": str(output_dir / "topic_share_by_period_and_ip_and_keyword.csv"),
+                    "documents_path": str(topic_paths["documents_path"].resolve()),
+                    "topic_info_path": str(topic_paths["topic_info_path"].resolve()),
+                    "topic_overview_path": str(topic_paths["topic_overview_path"].resolve()),
+                    "topic_terms_path": str(topic_paths["topic_terms_path"].resolve()),
+                    "topic_share_by_period_path": str(topic_paths["topic_share_by_period_path"].resolve()),
+                    "topic_share_by_period_and_keyword_path": str(
+                        topic_paths["topic_share_by_period_and_keyword_path"].resolve()
+                    ),
+                    "topic_share_by_ip_path": str(topic_paths["topic_share_by_ip_path"].resolve()),
+                    "topic_share_by_period_and_ip_path": str(topic_paths["topic_share_by_period_and_ip_path"].resolve()),
+                    "topic_share_by_period_and_ip_and_keyword_path": str(
+                        topic_paths["topic_share_by_period_and_ip_and_keyword_path"].resolve()
+                    ),
                 }
             )
             write_json(summary_path, summary, dry_run=dry_run)
@@ -315,6 +404,8 @@ def sync_preferred_topic_model_metadata(artifacts_dir: Path, *, dry_run: bool) -
                 }
             )
             write_json(checkpoint_manifest_path, checkpoint_manifest, dry_run=dry_run)
+    if not dry_run:
+        sync_topic_model_output_metadata(topic_model_dir)
 
 
 def ensure_canonical_analysis_outputs(artifacts_dir: Path, *, dry_run: bool) -> None:
@@ -369,9 +460,9 @@ def write_layout_summary(artifacts_dir: Path, *, dry_run: bool) -> None:
             "",
             "- `broad_analysis/README.md`: start-here guide for broad-analysis outputs.",
             "- `broad_analysis/overview/`: condensed tables and the generated manifest.",
-            "- `broad_analysis/topic_model_BAAI/`: canonical BERTopic outputs.",
-            "- `broad_analysis/semantic_analysis/`: canonical 09 semantic-analysis outputs.",
-            "- `broad_analysis/drift_analysis/`: canonical 10 drift-analysis outputs.",
+            "- `broad_analysis/topic_model_BAAI/`: canonical BERTopic outputs (`readouts/` for direct reading, `viz_inputs/` for programmatic inputs, `checkpoints/` kept in place).",
+            "- `broad_analysis/semantic_analysis/`: canonical 09 semantic-analysis outputs (`readouts/` + `viz_inputs/`).",
+            "- `broad_analysis/drift_analysis/`: canonical 10 drift-analysis outputs (`readouts/` + `viz_inputs/`).",
             "- `broad_analysis/snapshots/`: dated or one-off analysis snapshots.",
             "- `broad_analysis/legacy/`: older or alternate topic-analysis outputs kept for reference.",
             "- `runs/dual_label/`: archived dual-label training runs.",
@@ -402,6 +493,10 @@ def main() -> None:
     archive_nonpreferred_topic_model(artifacts_dir, dry_run=args.dry_run)
     sync_preferred_topic_model_metadata(artifacts_dir, dry_run=args.dry_run)
     ensure_canonical_analysis_outputs(artifacts_dir, dry_run=args.dry_run)
+    organize_canonical_stage_layouts(artifacts_dir, dry_run=args.dry_run)
+    sync_preferred_topic_model_metadata(artifacts_dir, dry_run=args.dry_run)
+    if not args.dry_run:
+        sync_all_analysis_output_metadata(artifacts_dir / "broad_analysis")
     remove_visualization_outputs(artifacts_dir, dry_run=args.dry_run)
     write_layout_summary(artifacts_dir, dry_run=args.dry_run)
     if not args.dry_run:

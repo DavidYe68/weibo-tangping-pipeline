@@ -21,7 +21,7 @@ from lib.analysis_utils import (
     save_dataframe,
     sort_period_labels,
 )
-from lib.broad_analysis_layout import sync_semantic_output_metadata
+from lib.broad_analysis_layout import semantic_output_paths, sync_semantic_output_metadata
 from lib.broad_analysis_overview import refresh_broad_analysis_overview
 from lib.io_utils import save_json
 
@@ -401,10 +401,12 @@ def main() -> None:
 
     output_dir = Path(args.output_dir)
     output_dir.mkdir(parents=True, exist_ok=True)
-    cooccurrence_path = output_dir / "keyword_cooccurrence.csv"
-    neighbors_path = output_dir / "keyword_semantic_neighbors.csv"
-    tokenized_path = output_dir / "tokenized_analysis_base.parquet"
-    summary_path = output_dir / "semantic_analysis_summary.json"
+    paths = semantic_output_paths(output_dir)
+    paths["viz_inputs_dir"].mkdir(parents=True, exist_ok=True)
+    cooccurrence_path = paths["cooccurrence_path"]
+    neighbors_path = paths["semantic_neighbors_path"]
+    tokenized_path = paths["tokenized_analysis_base_path"]
+    summary_path = paths["summary_path"]
 
     save_start = time.perf_counter()
     emit(f"Saving outputs under {output_dir}")
@@ -415,6 +417,8 @@ def main() -> None:
     summary = {
         "input_path": args.input_path,
         "output_dir": str(output_dir.resolve()),
+        "readouts_dir": str(paths["readouts_dir"].resolve()),
+        "viz_inputs_dir": str(paths["viz_inputs_dir"].resolve()),
         "selected_keywords": selected_keywords,
         "time_granularity": args.time_granularity,
         "embedding_model": args.embedding_model,

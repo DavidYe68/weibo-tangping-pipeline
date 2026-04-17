@@ -417,16 +417,16 @@ cp bert/llm_label_local.example.toml bert/llm_label_local.toml
 
 重点输出：
 
-- `bert/artifacts/broad_analysis/topic_model_BAAI/document_topics.parquet`
-- `bert/artifacts/broad_analysis/topic_model_BAAI/topic_info.csv`
-- `bert/artifacts/broad_analysis/topic_model_BAAI/topic_overview.csv`
-- `bert/artifacts/broad_analysis/topic_model_BAAI/topic_terms.csv`
-- `bert/artifacts/broad_analysis/topic_model_BAAI/topic_share_by_period.csv`
-- `bert/artifacts/broad_analysis/topic_model_BAAI/topic_share_by_period_and_keyword.csv`
-- `bert/artifacts/broad_analysis/topic_model_BAAI/topic_share_by_ip.csv`
-- `bert/artifacts/broad_analysis/topic_model_BAAI/topic_share_by_period_and_ip.csv`
-- `bert/artifacts/broad_analysis/topic_model_BAAI/topic_share_by_period_and_ip_and_keyword.csv`
 - `bert/artifacts/broad_analysis/topic_model_BAAI/topic_model_summary.json`
+- `bert/artifacts/broad_analysis/topic_model_BAAI/readouts/topic_info.csv`
+- `bert/artifacts/broad_analysis/topic_model_BAAI/readouts/topic_overview.csv`
+- `bert/artifacts/broad_analysis/topic_model_BAAI/readouts/topic_terms.csv`
+- `bert/artifacts/broad_analysis/topic_model_BAAI/readouts/topic_share_by_period.csv`
+- `bert/artifacts/broad_analysis/topic_model_BAAI/readouts/topic_share_by_period_and_keyword.csv`
+- `bert/artifacts/broad_analysis/topic_model_BAAI/viz_inputs/document_topics.parquet`
+- `bert/artifacts/broad_analysis/topic_model_BAAI/viz_inputs/topic_share_by_ip.csv`
+- `bert/artifacts/broad_analysis/topic_model_BAAI/viz_inputs/topic_share_by_period_and_ip.csv`
+- `bert/artifacts/broad_analysis/topic_model_BAAI/viz_inputs/topic_share_by_period_and_ip_and_keyword.csv`
 
 补充：
 
@@ -460,10 +460,10 @@ cp bert/llm_label_local.example.toml bert/llm_label_local.toml
 
 重点输出：
 
-- `bert/artifacts/broad_analysis/semantic_analysis/keyword_cooccurrence.csv`
-- `bert/artifacts/broad_analysis/semantic_analysis/keyword_semantic_neighbors.csv`
-- `bert/artifacts/broad_analysis/semantic_analysis/tokenized_analysis_base.parquet`
 - `bert/artifacts/broad_analysis/semantic_analysis/semantic_analysis_summary.json`
+- `bert/artifacts/broad_analysis/semantic_analysis/viz_inputs/keyword_cooccurrence.csv`
+- `bert/artifacts/broad_analysis/semantic_analysis/viz_inputs/keyword_semantic_neighbors.csv`
+- `bert/artifacts/broad_analysis/semantic_analysis/viz_inputs/tokenized_analysis_base.parquet`
 
 补充：
 
@@ -479,11 +479,11 @@ cp bert/llm_label_local.example.toml bert/llm_label_local.toml
 
 这一步不会重跑重型 embedding，只会读取 `09` 的现成结果并生成：
 
-- `midterm_bundle/semantic_keyword_overview.csv`：每个关键词总体上更适合进入中期报告的词
-- `midterm_bundle/semantic_period_shortlist.csv`：按月筛过一轮的 lead terms
-- `midterm_bundle/semantic_midterm_coding_template.csv`：人工编码模板，附代表原文
-- `midterm_bundle/semantic_noise_diagnostics.csv`：被自动判成噪声的词和原因
-- `midterm_bundle/semantic_midterm_notes.md`：面向中期汇报的阅读说明
+- `readouts/midterm_bundle/semantic_keyword_overview.csv`：每个关键词总体上更适合进入中期报告的词
+- `readouts/midterm_bundle/semantic_period_shortlist.csv`：按月筛过一轮的 lead terms
+- `readouts/midterm_bundle/semantic_midterm_coding_template.csv`：人工编码模板，附代表原文
+- `readouts/midterm_bundle/semantic_noise_diagnostics.csv`：被自动判成噪声的词和原因
+- `readouts/midterm_bundle/semantic_midterm_notes.md`：面向中期汇报的阅读说明
 
 ### 10. `10_concept_drift_analysis.py`
 
@@ -510,17 +510,17 @@ cp bert/llm_label_local.example.toml bert/llm_label_local.toml
 
 重点输出：
 
-- `bert/artifacts/broad_analysis/drift_analysis/keyword_collocation_drift.csv`
-- `bert/artifacts/broad_analysis/drift_analysis/keyword_neighbor_drift.csv`
-- `bert/artifacts/broad_analysis/drift_analysis/topic_drift_by_keyword.csv`
-- `bert/artifacts/broad_analysis/drift_analysis/topic_share_change_by_keyword.csv`
-- `bert/artifacts/broad_analysis/drift_analysis/topic_drift_overall.csv`
-- `bert/artifacts/broad_analysis/drift_analysis/topic_share_change_overall.csv`
-- `bert/artifacts/broad_analysis/drift_analysis/topic_drift_by_ip.csv`
-- `bert/artifacts/broad_analysis/drift_analysis/topic_share_change_by_ip.csv`
-- `bert/artifacts/broad_analysis/drift_analysis/topic_drift_by_ip_and_keyword.csv`
-- `bert/artifacts/broad_analysis/drift_analysis/topic_share_change_by_ip_and_keyword.csv`
 - `bert/artifacts/broad_analysis/drift_analysis/drift_analysis_summary.json`
+- `bert/artifacts/broad_analysis/drift_analysis/readouts/keyword_collocation_drift.csv`
+- `bert/artifacts/broad_analysis/drift_analysis/readouts/keyword_neighbor_drift.csv`
+- `bert/artifacts/broad_analysis/drift_analysis/readouts/topic_drift_by_keyword.csv`
+- `bert/artifacts/broad_analysis/drift_analysis/readouts/topic_drift_overall.csv`
+- `bert/artifacts/broad_analysis/drift_analysis/viz_inputs/topic_share_change_by_keyword.csv`
+- `bert/artifacts/broad_analysis/drift_analysis/viz_inputs/topic_share_change_overall.csv`
+- `bert/artifacts/broad_analysis/drift_analysis/viz_inputs/topic_drift_by_ip.csv`
+- `bert/artifacts/broad_analysis/drift_analysis/viz_inputs/topic_share_change_by_ip.csv`
+- `bert/artifacts/broad_analysis/drift_analysis/viz_inputs/topic_drift_by_ip_and_keyword.csv`
+- `bert/artifacts/broad_analysis/drift_analysis/viz_inputs/topic_share_change_by_ip_and_keyword.csv`
 
 ## 输出目录规范
 
@@ -529,6 +529,7 @@ cp bert/llm_label_local.example.toml bert/llm_label_local.toml
 - `08` 的当前主结果固定放在 `bert/artifacts/broad_analysis/topic_model_BAAI/`
 - `09` 的当前主结果固定放在 `bert/artifacts/broad_analysis/semantic_analysis/`
 - `10` 的当前主结果固定放在 `bert/artifacts/broad_analysis/drift_analysis/`
+- 每个主结果目录内部统一分成 `readouts/` 和 `viz_inputs/` 两层；前者给人直接看，后者给程序和可视化调用
 - 带日期或一次性批处理的版本，统一放在 `bert/artifacts/broad_analysis/snapshots/<group>/<run_tag>/`
 
 例如，按默认命令顺着跑一遍：

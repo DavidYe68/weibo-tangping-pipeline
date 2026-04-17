@@ -20,6 +20,7 @@ from lib.broad_analysis_layout import (
     CANONICAL_DRIFT_DIR,
     CANONICAL_SEMANTIC_DIR,
     copy_output_bundle,
+    resolve_topic_model_artifact,
     sync_drift_output_metadata,
     sync_semantic_output_metadata,
 )
@@ -222,7 +223,7 @@ def build_topic_input_map(topic_model_dir: Path, run_dir: Path, max_month: str) 
     outputs: dict[str, dict[str, object]] = {}
     trimmed_dir = run_dir / "trimmed_topic_inputs"
     for key, filename in mapping.items():
-        source_path = topic_model_dir / filename
+        source_path = resolve_topic_model_artifact(topic_model_dir, filename)
         if not source_path.exists():
             raise FileNotFoundError(f"Required topic-share input not found: {source_path}")
         output_path = trimmed_dir / filename
