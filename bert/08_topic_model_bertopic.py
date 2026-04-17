@@ -28,12 +28,22 @@ from lib.analysis_utils import (
     save_dataframe,
     sort_period_labels,
 )
+from lib.broad_analysis_layout import topic_model_output_paths
 from lib.broad_analysis_overview import refresh_broad_analysis_overview
 from lib.io_utils import save_json
 
 DEFAULT_TOPIC_STOPWORDS_PATH = "bert/config/topic_stopwords.txt"
 DEFAULT_EMBEDDING_MODEL = "BAAI/bge-small-zh-v1.5"
 DEFAULT_UMAP_N_NEIGHBORS = 30
+DEFAULT_OUTLIER_REDUCTION_STRATEGY = "none"
+OUTLIER_REDUCTION_STRATEGIES = (
+    "none",
+    "c-tf-idf",
+    "distributions",
+    "embeddings",
+    "probabilities",
+    "c-tf-idf+distributions",
+)
 TOPIC_TOKEN_RE = re.compile(r"[\u4e00-\u9fffA-Za-z0-9_]+")
 TOPIC_SEGMENT_RE = re.compile(r"[A-Za-z0-9_]+|[\u4e00-\u9fff]+")
 
@@ -297,6 +307,33 @@ def parse_args() -> argparse.Namespace:
         help="Number of parallel jobs for HDBSCAN core-distance calculations. Lower values use less memory.",
     )
     parser.add_argument(
+        "--hdbscan_min_samples",
+        type=int,
+        default=None,
+        help=(
+            "Optional HDBSCAN min_samples. Defaults to min_topic_size. "
+            "Lower values usually reduce outliers but can force noisier assignments."
+        ),
+    )
+    parser.add_argument(
+        "--outlier_reduction_strategy",
+        choices=OUTLIER_REDUCTION_STRATEGIES,
+        default=DEFAULT_OUTLIER_REDUCTION_STRATEGY,
+        help=(
+            "Optional BERTopic reduce_outliers strategy. "
+            "Use 'c-tf-idf+distributions' to chain the two official strategies."
+        ),
+    )
+    parser.add_argument(
+        "--outlier_reduction_threshold",
+        type=float,
+        default=0.0,
+        help=(
+            "Similarity threshold passed to BERTopic reduce_outliers. "
+            "Higher values make reassignment of outliers more conservative."
+        ),
+    )
+    parser.add_argument(
         "--resume",
         action="store_true",
         help="Resume from checkpointed embeddings and dimensionality-reduction outputs if available.",
@@ -361,11 +398,20 @@ def build_topic_vectorizer(args: argparse.Namespace, *, emit):
     )
 
 
+def resolve_hdbscan_min_samples(args: argparse.Namespace) -> int:
+    if args.hdbscan_min_samples is None:
+        return int(args.min_topic_size)
+    if args.hdbscan_min_samples <= 0:
+        raise ValueError("--hdbscan_min_samples must be a positive integer.")
+    return int(args.hdbscan_min_samples)
+
+
 def build_bertopic_model(args: argparse.Namespace, *, embedding_model, emit):
     BERTopic = load_bertopic_class()
     umap_model = None
     hdbscan_model = None
     vectorizer_model = build_topic_vectorizer(args, emit=emit)
+    resolved_min_samples = resolve_hdbscan_min_samples(args)
     try:
         from umap import UMAP
     except ImportError:
@@ -392,6 +438,7 @@ def build_bertopic_model(args: argparse.Namespace, *, embedding_model, emit):
     else:
         hdbscan_model = HDBSCAN(
             min_cluster_size=args.min_topic_size,
+            min_samples=resolved_min_samples,
             metric="euclidean",
             cluster_selection_method="eom",
             core_dist_n_jobs=args.hdbscan_core_dist_n_jobs,
@@ -399,7 +446,7 @@ def build_bertopic_model(args: argparse.Namespace, *, embedding_model, emit):
         )
         emit(
             "Using explicit HDBSCAN clusterer "
-            f"(min_cluster_size={args.min_topic_size}, metric=euclidean, "
+            f"(min_cluster_size={args.min_topic_size}, min_samples={resolved_min_samples}, metric=euclidean, "
             f"cluster_selection_method=eom, core_dist_n_jobs={args.hdbscan_core_dist_n_jobs}, "
             f"prediction_data={args.calculate_probabilities})"
         )
@@ -531,6 +578,71 @@ def fit_topic_model_with_precomputed_reduction(
     topic_model._save_representative_docs(documents)
     topic_model.probabilities_ = topic_model._map_probabilities(probabilities, original_topics=True)
     return documents.Topic.to_list(), topic_model.probabilities_
+
+
+def reduce_topic_outliers(
+    topic_model,
+    *,
+    args: argparse.Namespace,
+    texts: list[str],
+    topics: list[int],
+    embeddings: np.ndarray,
+    probabilities,
+    emit,
+) -> tuple[list[int], bool]:
+    strategy = str(args.outlier_reduction_strategy or DEFAULT_OUTLIER_REDUCTION_STRATEGY).strip().lower()
+    if strategy == "none":
+        return list(topics), False
+
+    original_topics = [int(topic_id) for topic_id in topics]
+    original_outlier_count = int(sum(topic_id < 0 for topic_id in original_topics))
+    if original_outlier_count <= 0:
+        emit("Skipping outlier reduction because the model produced no outlier documents")
+        return original_topics, False
+
+    if strategy == "probabilities" and (probabilities is None or getattr(probabilities, "ndim", 1) != 2):
+        raise ValueError(
+            "--outlier_reduction_strategy probabilities requires --calculate_probabilities "
+            "so BERTopic can produce a full document-topic probability matrix."
+        )
+
+    def run_single_strategy(base_topics: list[int], selected_strategy: str) -> list[int]:
+        kwargs: dict[str, object] = {
+            "strategy": selected_strategy,
+            "threshold": float(args.outlier_reduction_threshold),
+        }
+        if selected_strategy == "embeddings":
+            kwargs["embeddings"] = embeddings
+        elif selected_strategy == "probabilities":
+            kwargs["probabilities"] = probabilities
+        return [int(topic_id) for topic_id in topic_model.reduce_outliers(texts, base_topics, **kwargs)]
+
+    reduction_start = time.perf_counter()
+    emit(
+        "Reducing outliers with BERTopic "
+        f"(strategy={strategy}, threshold={args.outlier_reduction_threshold}, "
+        f"outliers_before={original_outlier_count})"
+    )
+    if strategy == "c-tf-idf+distributions":
+        new_topics = run_single_strategy(original_topics, "c-tf-idf")
+        remaining_outliers = int(sum(topic_id < 0 for topic_id in new_topics))
+        emit(f"First-pass c-tf-idf outlier reduction left {remaining_outliers} outliers")
+        if remaining_outliers > 0:
+            new_topics = run_single_strategy(new_topics, "distributions")
+    else:
+        new_topics = run_single_strategy(original_topics, strategy)
+
+    new_outlier_count = int(sum(topic_id < 0 for topic_id in new_topics))
+    if new_topics == original_topics:
+        emit(f"Outlier reduction made no assignment changes in {format_elapsed(reduction_start)}")
+        return new_topics, False
+
+    topic_model.update_topics(texts, topics=new_topics)
+    emit(
+        "Outlier reduction finished in "
+        f"{format_elapsed(reduction_start)} (outliers: {original_outlier_count} -> {new_outlier_count})"
+    )
+    return new_topics, True
 
 
 def clean_optional_text(value: object) -> str:
@@ -809,23 +921,59 @@ def main() -> None:
         reduced_embeddings=reduced_embeddings,
     )
     emit(f"BERTopic pipeline finished in {format_elapsed(fit_start)}")
+    topics_before_outlier_reduction = [int(topic_id) for topic_id in topics]
+    initial_outlier_document_count = int(sum(topic_id < 0 for topic_id in topics_before_outlier_reduction))
+    initial_topic_count_excluding_outliers = len({topic_id for topic_id in topics_before_outlier_reduction if topic_id >= 0})
+    topics, outlier_reduction_applied = reduce_topic_outliers(
+        topic_model,
+        args=args,
+        texts=texts,
+        topics=topics_before_outlier_reduction,
+        embeddings=embeddings,
+        probabilities=probabilities,
+        emit=emit,
+    )
 
     postprocess_start = time.perf_counter()
     emit("Post-processing topic assignments")
     doc_topics = filtered.copy()
     doc_topics["topic_id"] = topics
     if probabilities is not None and getattr(probabilities, "ndim", 1) == 1:
-        doc_topics["topic_probability"] = pd.Series(probabilities, copy=False).astype(float)
+        topic_probabilities = []
+        for row_index, topic_id in enumerate(topics):
+            if topic_id < 0:
+                topic_probabilities.append(float("nan"))
+                continue
+            if outlier_reduction_applied and topic_id != topics_before_outlier_reduction[row_index]:
+                topic_probabilities.append(float("nan"))
+                continue
+            topic_probabilities.append(float(probabilities[row_index]))
+        doc_topics["topic_probability"] = topic_probabilities
     elif probabilities is not None:
         topic_probabilities = []
         for row_index, topic_id in enumerate(topics):
             if topic_id < 0:
                 topic_probabilities.append(float("nan"))
                 continue
+            if outlier_reduction_applied and topic_id != topics_before_outlier_reduction[row_index]:
+                topic_probabilities.append(float("nan"))
+                continue
             topic_probabilities.append(float(probabilities[row_index][topic_id]))
         doc_topics["topic_probability"] = topic_probabilities
     else:
         doc_topics["topic_probability"] = float("nan")
+    if outlier_reduction_applied:
+        reassigned_count = int(
+            sum(
+                new_topic_id != old_topic_id
+                for new_topic_id, old_topic_id in zip(topics, topics_before_outlier_reduction)
+            )
+        )
+        emit(
+            "Outlier reassignment updated "
+            f"{reassigned_count} documents; reassigned rows keep topic_id/topic_label but "
+            "their topic_probability is set to NaN because BERTopic does not emit updated HDBSCAN probabilities here."
+        )
 
     topic_info = topic_model.get_topic_info().copy()
     if "topic_label_machine" not in topic_info.columns:
@@ -979,16 +1127,19 @@ def main() -> None:
         )
     emit(f"Post-processing finished in {format_elapsed(postprocess_start)}")
 
-    documents_path = output_dir / "document_topics.parquet"
-    topic_info_path = output_dir / "topic_info.csv"
-    topic_terms_path = output_dir / "topic_terms.csv"
-    share_by_period_path = output_dir / "topic_share_by_period.csv"
-    share_by_period_keyword_path = output_dir / "topic_share_by_period_and_keyword.csv"
-    share_by_ip_path = output_dir / "topic_share_by_ip.csv"
-    share_by_period_ip_path = output_dir / "topic_share_by_period_and_ip.csv"
-    share_by_period_ip_keyword_path = output_dir / "topic_share_by_period_and_ip_and_keyword.csv"
-    topic_overview_path = output_dir / "topic_overview.csv"
-    summary_path = output_dir / "topic_model_summary.json"
+    paths = topic_model_output_paths(output_dir)
+    for directory_key in ["readouts_dir", "viz_inputs_dir"]:
+        paths[directory_key].mkdir(parents=True, exist_ok=True)
+    documents_path = paths["documents_path"]
+    topic_info_path = paths["topic_info_path"]
+    topic_terms_path = paths["topic_terms_path"]
+    share_by_period_path = paths["topic_share_by_period_path"]
+    share_by_period_keyword_path = paths["topic_share_by_period_and_keyword_path"]
+    share_by_ip_path = paths["topic_share_by_ip_path"]
+    share_by_period_ip_path = paths["topic_share_by_period_and_ip_path"]
+    share_by_period_ip_keyword_path = paths["topic_share_by_period_and_ip_and_keyword_path"]
+    topic_overview_path = paths["topic_overview_path"]
+    summary_path = paths["summary_path"]
 
     save_start = time.perf_counter()
     emit(f"Saving outputs under {output_dir}")
@@ -1012,13 +1163,15 @@ def main() -> None:
 
     if args.save_model:
         emit("Saving BERTopic model")
-        topic_model.save(output_dir / "model", save_embedding_model=args.embedding_model)
+        topic_model.save(paths["model_dir"], save_embedding_model=args.embedding_model)
 
     outlier_document_count = int(topic_info.loc[pd.to_numeric(topic_info["Topic"], errors="coerce") == -1, "Count"].sum())
     clustered_document_count = int(len(doc_topics) - outlier_document_count)
     summary = {
         "input_path": args.input_path,
         "output_dir": str(output_dir.resolve()),
+        "readouts_dir": str(paths["readouts_dir"].resolve()),
+        "viz_inputs_dir": str(paths["viz_inputs_dir"].resolve()),
         "checkpoint_dir": str(checkpoint_dir.resolve()),
         "selected_keywords": selected_keywords,
         "document_count": int(len(doc_topics)),
@@ -1036,6 +1189,16 @@ def main() -> None:
         "umap_low_memory": bool(args.umap_low_memory),
         "umap_n_neighbors": int(args.umap_n_neighbors),
         "hdbscan_core_dist_n_jobs": int(args.hdbscan_core_dist_n_jobs),
+        "hdbscan_min_samples": int(resolve_hdbscan_min_samples(args)),
+        "nr_topics": args.nr_topics,
+        "initial_topic_count_excluding_outliers": int(initial_topic_count_excluding_outliers),
+        "initial_outlier_document_count": int(initial_outlier_document_count),
+        "initial_outlier_share": (
+            float(initial_outlier_document_count / len(doc_topics)) if len(doc_topics) > 0 else 0.0
+        ),
+        "outlier_reduction_strategy": str(args.outlier_reduction_strategy),
+        "outlier_reduction_threshold": float(args.outlier_reduction_threshold),
+        "outlier_reduction_applied": bool(outlier_reduction_applied),
         "reducer_signature": reducer_signature,
         "resolved_ip_col": resolved_ip_col,
         "unique_ip_count_excluding_missing": int(doc_topics.loc[~doc_topics["ip_missing"], "ip_normalized"].nunique()),
