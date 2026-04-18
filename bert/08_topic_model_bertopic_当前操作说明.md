@@ -214,9 +214,9 @@ IP 列不是硬性必需项。
 
 执行逻辑是：
 
-1. 如果 `--resume` 开着、embedding checkpoint 存在、指纹一致、而且 checkpoint 记录的 embedding 模型也和当前请求一致  
+1. 如果 `--resume` 开着、embedding checkpoint 存在、指纹一致、而且 checkpoint 记录的 embedding 模型也和当前请求一致
    -> 直接加载 `document_embeddings.npy`
-2. 否则  
+2. 否则
    -> 用 sentence-transformers 重新编码全部文本
 
 编码后的结果会保存到：
@@ -293,7 +293,7 @@ IP 列不是硬性必需项。
 如果环境里装了 `hdbscan`，脚本会显式创建：
 
 - `min_cluster_size = min_topic_size`
-- `min_samples = hdbscan_min_samples`  
+- `min_samples = hdbscan_min_samples`
   如果你没单独给，就等于 `min_topic_size`
 - `metric = euclidean`
 - `cluster_selection_method = eom`
@@ -369,9 +369,9 @@ embedding 之后，脚本还会单独对降维做 checkpoint。
 
 这意味着：
 
-- 如果你设了 `nr_topics=auto` 或某个整数  
+- 如果你设了 `nr_topics=auto` 或某个整数
   -> BERTopic 会在初始聚类后再做合并
-- 如果你没设  
+- 如果你没设
   -> 保留原始聚类主题
 
 ---
@@ -398,8 +398,8 @@ embedding 之后，脚本还会单独对降维做 checkpoint。
 1. 先拿到初始 topic 分配
 2. 统计初始 `-1` 数量
 3. 如果策略不是 `none`，就调用 BERTopic 的 `reduce_outliers`
-4. 如果你选的是 `c-tf-idf+distributions`  
-   -> 先跑一遍 `c-tf-idf`  
+4. 如果你选的是 `c-tf-idf+distributions`
+   -> 先跑一遍 `c-tf-idf`
    -> 只对还剩下的 `-1` 再跑一遍 `distributions`
 5. 如果发生了 topic 变更，就调用 `topic_model.update_topics(...)`
 
@@ -692,13 +692,13 @@ embedding 之后，脚本还会单独对降维做 checkpoint。
 
 如果你现在要看某一轮 `08` 的结果，最稳的顺序是：
 
-1. 先看 `topic_model_summary.json`  
+1. 先看 `topic_model_summary.json`
    确认这轮到底用了什么参数、outlier 有多少
-2. 再看 `topic_overview.csv`  
+2. 再看 `topic_overview.csv`
    建立对整盘 topic 的第一印象
-3. 再看 `topic_info.csv`  
+3. 再看 `topic_info.csv`
    检查命名和代表文本到底靠不靠谱
-4. 然后看 `topic_share_by_period.csv`  
+4. 然后看 `topic_share_by_period.csv`
    判断这些 topic 的时间变化
 5. 如果要做更细切片，再看：
    - `topic_share_by_period_and_keyword.csv`
