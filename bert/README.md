@@ -486,6 +486,10 @@ cp bert/llm_label_local.example.toml bert/llm_label_local.toml
 - 各主题在时间上怎么变化
 - 不同关键词、不同地区上，主题占比怎么变
 
+如果你想按当前代码的真实执行顺序理解 `08`，直接看：
+
+- [`08_topic_model_bertopic_当前操作说明.md`](08_topic_model_bertopic_当前操作说明.md)
+
 默认命令：
 
 ```bash
@@ -625,13 +629,39 @@ cp bert/llm_label_local.example.toml bert/llm_label_local.toml
 
 ## 9. 关键词语义分析：`09_keyword_semantic_analysis.py`
 
-这一步更偏“关键词附近都在和谁一起出现，它们的语义邻居是什么”。
+这一部分负责从 `07` 生成的 broad 分析底表中提取关键词周围的高价值语义线索，并将结果整理成可阅读、可复核、可继续修正的文件。它在整个 `07-10` 链条中的位置，是把“关键词相关文本”转成“关键词在不同时间段里与哪些表达共同出现，这些表达最终落入哪些语境桶”的结构化结果。后续的 `10` 会继续利用这里的共现和邻居结果做漂移比较。
 
-它会做的事：
+### 输入与主要依赖
 
-- 为每个关键词、每个时间段提取可解释的临近词候选
-- 先做共现词统计
-- 再用 embedding 重排，得到更稳定的 semantic neighbors
+主脚本 [09_keyword_semantic_analysis.py](/Users/apple/Local/fdurop/code/result/bert/09_keyword_semantic_analysis.py) 默认读取：
+
+- `bert/artifacts/broad_analysis/analysis_base.parquet`
+
+该文件由 `07_build_broad_analysis_base.py` 生成，提供文本内容、标准化关键词标签和时间字段，是 09 的唯一底表输入。
+
+脚本运行时还会用到：
+
+- `bert/config/topic_stopwords.txt`：分词后的停用词表
+- `jieba`：中文分词
+- `sentence-transformers`：语义邻居重排
+
+整理脚本 [09_prepare_semantic_midterm.py](/Users/apple/Local/fdurop/code/result/bert/09_prepare_semantic_midterm.py) 继续读取 09 主脚本的结果，并额外使用：
+
+- `bert/config/semantic_midterm_noise_terms.txt`：仅作用于 09 整理阶段的噪声词
+- `bert/config/semantic_bucket_rules.json`：自动分桶规则
+- `bert/config/semantic_bucket_overrides.csv`：人工覆盖表
+
+### 关键处理过程
+
+`09_keyword_semantic_analysis.py` 的处理过程分为三步。
+
+第一步是关键词过滤和时间切分。脚本从 `analysis_base.parquet` 中保留目标关键词对应的文本，生成 `period_label`，并对文本做分词、去停用词和 token set 构建。[09_keyword_semantic_analysis.py](/Users/apple/Local/fdurop/code/result/bert/09_keyword_semantic_analysis.py#L357)
+
+第二步是共现词打分。脚本按 `keyword + period_label` 统计候选词，计算文档频次、词频、PMI 和 lift，保留每个关键词、每个时间段中排序靠前的候选项。[09_keyword_semantic_analysis.py](/Users/apple/Local/fdurop/code/result/bert/09_keyword_semantic_analysis.py#L403)
+
+第三步是语义邻居重排。脚本对每个关键词及其候选词编码，计算 embedding similarity，并保留每组候选中的高相似度词项。[09_keyword_semantic_analysis.py](/Users/apple/Local/fdurop/code/result/bert/09_keyword_semantic_analysis.py#L435)
+
+`09_prepare_semantic_midterm.py` 在此基础上继续做整理工作。它先将共现词表和邻居表合并成统一候选池，再根据噪声规则、频次门槛、语义支持和规则桶生成中期整理候选表。随后回查 `tokenized_analysis_base.parquet`，补充代表文本、文本重复度和命中统计，在此基础上生成总体 shortlist、分期 shortlist、语义轨迹表、漂移摘要表以及人工修正工作表。[09_prepare_semantic_midterm.py](/Users/apple/Local/fdurop/code/result/bert/09_prepare_semantic_midterm.py#L1059)
 
 默认命令：
 
@@ -664,176 +694,92 @@ cp bert/llm_label_local.example.toml bert/llm_label_local.toml
   --semantic_dir "bert/artifacts/broad_analysis/semantic_analysis"
 ```
 
-这一步会生成一批更容易直接读的结果，比如：
+### 主脚本输出
 
-- `semantic_keyword_overview.csv`
+`09_keyword_semantic_analysis.py` 的直接产物位于 `bert/artifacts/broad_analysis/semantic_analysis/`：
+
+- `semantic_analysis_summary.json`：本轮运行的参数、输入路径和输出路径摘要
+- `viz_inputs/tokenized_analysis_base.parquet`：完成关键词过滤、时间切分和分词后的 09 专用底表
+- `viz_inputs/keyword_cooccurrence.csv`：按 `keyword + period_label` 生成的共现词候选表
+- `viz_inputs/keyword_semantic_neighbors.csv`：基于共现候选继续做 embedding 重排后的邻居表
+
+其中，`keyword_cooccurrence.csv` 和 `keyword_semantic_neighbors.csv` 是整理阶段的主要输入；`tokenized_analysis_base.parquet` 会在整理阶段回查代表文本、命中次数和文本重复度。
+
+### 整理阶段输出
+
+`09_prepare_semantic_midterm.py` 将主脚本结果整理为四组文件，统一写入 `readouts/`。
+
+`01_start_here/` 放第一次阅读时优先查看的结果：
+
+- `semantic_midterm_notes.md`：导读、噪声概况和关键词摘要
+- `semantic_keyword_overview.csv`：ALL 时段的总体 shortlist，保留每个关键词的代表词、分桶结果和示例文本
+- `semantic_context_trajectory.csv`：按 `keyword + period_label + context_bucket` 聚合后的时间轨迹表
+- `semantic_context_shift_summary.csv`：由轨迹表进一步压缩得到的变化摘要
+
+`02_period_detail/` 放分期细表：
+
+- `semantic_period_shortlist.csv`：每个关键词、每个时间段保留的代表词
+- `semantic_period_overview.csv`：对 `semantic_period_shortlist.csv` 的 period 级汇总
+- `semantic_context_bucket_summary.csv`：对总体 shortlist 的 context bucket 摘要
+
+`03_workbench/` 放人工复核和规则修正所需文件：
+
+- `semantic_midterm_candidates.csv`：整理阶段生成的总候选表，包含自动保留标记、分桶结果、排序分和示例文本
+- `semantic_bucket_override_template.csv`：从 shortlist 中抽出的人工改桶模板
+- `semantic_midterm_coding_template.csv`：便于进一步人工筛选的工作表
+- `semantic_noise_diagnostics.csv`：各类自动剔除原因的统计摘要
+
+`99_meta/` 放运行元信息：
+
+- `semantic_midterm_summary.json`：本轮整理的行数统计和参数摘要
+- `semantic_midterm_operation_log.md`：生成日志
+
+### 文件依赖关系
+
+09 的文件依赖关系可以概括为下面这条链：
+
+- `analysis_base.parquet`
+- `tokenized_analysis_base.parquet`
+- `keyword_cooccurrence.csv`
+- `keyword_semantic_neighbors.csv`
+- `semantic_midterm_candidates.csv`
+- `semantic_keyword_overview.csv` / `semantic_period_shortlist.csv`
 - `semantic_context_trajectory.csv`
 - `semantic_context_shift_summary.csv`
-- `semantic_period_shortlist.csv`
-- `semantic_bucket_override_template.csv`
-- `semantic_midterm_notes.md`
 
-如果你准备读 `09`，最推荐的顺序是：
+其中：
 
-1. 先看 `semantic_keyword_overview.csv`
-2. 再看 `semantic_context_trajectory.csv`
-3. 最后用 `semantic_context_shift_summary.csv` 提炼结论
+- `semantic_midterm_candidates.csv` 是整理阶段的候选总表，后续 shortlist、工作台文件和摘要表都从这里继续生成。[09_prepare_semantic_midterm.py](/Users/apple/Local/fdurop/code/result/bert/09_prepare_semantic_midterm.py#L1070)
+- `semantic_keyword_overview.csv` 来自 `ALL` 时段候选的二次筛选和重排，是总体层面的核心读物。[09_prepare_semantic_midterm.py](/Users/apple/Local/fdurop/code/result/bert/09_prepare_semantic_midterm.py#L1074)
+- `semantic_period_shortlist.csv` 来自非 `ALL` 时段候选的分期筛选，是时间段解释的主要入口。[09_prepare_semantic_midterm.py](/Users/apple/Local/fdurop/code/result/bert/09_prepare_semantic_midterm.py#L1074)
+- `semantic_context_trajectory.csv` 基于 period 级候选按 `context_bucket` 聚合生成。[09_prepare_semantic_midterm.py](/Users/apple/Local/fdurop/code/result/bert/09_prepare_semantic_midterm.py#L1129)
+- `semantic_context_shift_summary.csv` 由轨迹表继续汇总得到，是用于汇报和章节写作的摘要结果。[09_prepare_semantic_midterm.py](/Users/apple/Local/fdurop/code/result/bert/09_prepare_semantic_midterm.py#L1131)
 
-不过这几份文件不是同一种东西。有的是总览表，有的是时间轨迹表，有的是人工修正模板。分开理解会更清楚。
+### 主要文件用途
 
-### `semantic_keyword_overview.csv` 里会有什么
+`semantic_keyword_overview.csv` 包含总体 shortlist。文件中保留了 `term_doc_freq`、`lift`、`embedding_similarity`、`midterm_score`、`theme_bucket`、`context_bucket` 以及代表文本，适合用于命名语义簇、检查总体分桶和确认示例文本是否可靠。
 
-这个文件最适合当 `09` 的第一入口。它会把每个关键词下比较值得保留的代表词先挑出来，方便你先建立整体印象。
+`semantic_context_trajectory.csv` 汇总每个时间段中各个语义桶的强度，包含 `context_term_count`、`context_term_doc_freq_sum`、`context_midterm_score_sum`、`context_doc_freq_share`、`context_score_share` 和 `lead_terms`，适合用于观察语义桶的时间变化。
 
-通常会看到这些信息：
+`semantic_context_shift_summary.csv` 从轨迹表中提取 `first_period`、`latest_period`、`score_share_change`、`peak_period`、`peak_context_score_share` 和 `representative_terms_over_time`，是后续汇报中最稳定的摘要来源之一。
 
-- `keyword`：对应的研究关键词
-- `term`：被保留下来的代表词
-- `midterm_rank`：这个词在该关键词内部的大致优先级
-- `term_doc_freq`：这个词命中了多少文本
-- `lift`：它和该关键词绑定得紧不紧
-- `embedding_similarity`：它是否得到了语义邻居结果的支持
-- `midterm_score`：脚本综合频次、区分度和语义支持后算出来的排序分
-- `theme_bucket` / `context_bucket`：这个词最终被归到哪个主题桶、语境桶
-- `example_1_text`、`example_2_text`：代表文本，方便你回头看真实语境
+`semantic_period_shortlist.csv` 展开到 `keyword + period_label + term` 粒度，保留分期代表词、示例文本和分桶结果，用于追查某一时期为什么出现特定语义变化。
 
-这张表最适合回答：
+`semantic_bucket_override_template.csv` 和 `bert/config/semantic_bucket_overrides.csv` 对应，前者负责收集需要人工修正的行，后者负责在下一轮整理时生效。
 
-- 每个关键词大概有哪些代表用法
-- 哪些词更值得拿来命名语义簇
-- 哪些词虽然常见，但语义上其实不稳定
+`semantic_noise_diagnostics.csv` 用于检查噪声来源，例如自变体、ASCII 词、平台招募词或手工噪声词是否占比过高。停用词或规则调整通常从这张表开始。
 
-如果你想先抓“这个关键词现在主要在什么语境里被使用”，先看它。
+### 建议阅读顺序
 
-### `semantic_context_trajectory.csv` 里会有什么
+第一次查看 09 结果时，优先顺序如下：
 
-这个文件是时间轨迹表。它不是盯着单个词，而是把同一时间段、同一个 `context_bucket` 下的词聚合起来看。
+1. `readouts/01_start_here/semantic_midterm_notes.md`
+2. `readouts/01_start_here/semantic_keyword_overview.csv`
+3. `readouts/01_start_here/semantic_context_trajectory.csv`
+4. `readouts/01_start_here/semantic_context_shift_summary.csv`
+5. `readouts/02_period_detail/semantic_period_shortlist.csv`
 
-通常会看到这些信息：
-
-- `keyword`
-- `period_label`：时间段标签，比如月度或季度
-- `context_bucket`：这个时间段里占优势的语义簇
-- `doc_count_in_keyword`：该关键词在这一时间段总共覆盖多少文本
-- `context_term_count`：这个语义簇里保留下来多少个代表词
-- `context_term_doc_freq_sum`：这些代表词的总文档频次
-- `context_midterm_score_sum`：这个语义簇累计的综合分数
-- `context_doc_freq_share`：它按词频在该时间段里占多大比重
-- `context_score_share`：它按综合分在该时间段里占多大比重
-- `lead_terms`：这个时间段最能代表该语义簇的几组词
-
-这张表最适合回答：
-
-- 某个语义簇是在什么时候开始变强的
-- 某段时间里哪个语义簇占主导
-- 语义变化到底是某几个词偶然冒头，还是同一类语境整体变强了
-
-如果你做时间分析，`context_score_share` 往往比单看词频更稳一些，因为它不只是机械累加出现次数。
-
-### `semantic_context_shift_summary.csv` 里会有什么
-
-这个文件是轨迹表的浓缩版。它不把每个时间段都展开，而是把一个语义簇从头到尾的变化压缩成几项摘要。
-
-通常会看到这些信息：
-
-- `keyword`
-- `context_bucket`
-- `period_count`：这个语义簇一共持续了多少期
-- `first_period` / `latest_period`：最早和最新出现在哪个时间段
-- `first_context_score_share` / `latest_context_score_share`：最早和最新时占比多少
-- `score_share_change`：从最早到最新，整体是增强还是减弱
-- `peak_period`：它最强的时间段
-- `peak_context_score_share`：峰值时占比多少
-- `avg_context_score_share`：整个观察期里的平均强度
-- `representative_terms_over_time`：这个语义簇在不同时间段里出现过的代表词摘要
-
-这张表最适合做结论提炼，比如：
-
-- 哪些语义簇是长期稳定存在的
-- 哪些只是某一段时间突然爆出来的
-- 哪些语义簇在后期明显增强或衰退
-
-如果你在写中期汇报或章节总结，这张表通常最好用。
-
-### `semantic_period_shortlist.csv` 里会有什么
-
-这个文件更像“按时间段展开的回查表”。它保留的是每个关键词、每个时间段里值得继续读的代表词。
-
-通常会看到这些信息：
-
-- `keyword`
-- `period_label`
-- `term`
-- `midterm_rank`
-- `term_doc_freq`
-- `theme_bucket` / `context_bucket`
-- `example_1_text`、`example_2_text`
-
-它最适合用在这些时候：
-
-- 你已经发现某个时间段有变化，想回头问“那时候到底冒出了哪些词”
-- 你想解释为什么某一时期某个语义簇突然上升
-- 你需要从摘要表回到更具体的词和文本例子
-
-所以它更像“展开细看”的入口，不是最先读的总览表。
-
-### `semantic_bucket_override_template.csv` 里会有什么
-
-这个文件不是直接拿来写结论的，而是拿来改桶的。
-
-通常会看到这些信息：
-
-- `keyword`
-- `period_label`
-- `term`
-- `auto_context_bucket` / `context_bucket`
-- `auto_theme_bucket` / `theme_bucket`
-- `override_context_bucket`
-- `override_theme_bucket`
-- `enabled`
-- `note`
-- `example_1_text`
-
-怎么用它：
-
-1. 先看脚本自动分的桶对不对
-2. 把明显分错的行挑出来
-3. 填到 `override_context_bucket` 或 `override_theme_bucket`
-4. 再复制到 `bert/config/semantic_bucket_overrides.csv`
-5. 重跑整理脚本
-
-它更像一个修正规则的工作台。
-
-### `semantic_midterm_notes.md` 里会有什么
-
-这是脚本自动写出来的一份导读，偏向“把这一轮 `09` 的结果快速讲给人听”。
-
-里面通常会有：
-
-- 这轮候选词和保留词的大致数量
-- 读取顺序建议
-- `09` 的原理摘要
-- 主要噪声来源
-- 各关键词的总体语义摘要
-- 语义簇时间变化的简短概括
-- 如果要做人工修正，应该从哪里下手
-
-这份文件适合：
-
-- 你隔了一段时间回来，需要快速找回上下文
-- 你想先看一版自动生成的读法，再决定进哪个 CSV 深挖
-- 你要先把这轮结果讲给别人听
-
-### 一个更实用的阅读顺序
-
-如果你第一次打开 `09` 的整理结果，推荐这样读：
-
-1. 先看 `semantic_keyword_overview.csv`，建立“每个关键词主要有哪些语义簇”的感觉
-2. 再看 `semantic_context_trajectory.csv`，确认这些语义簇在时间上是怎么起伏的
-3. 用 `semantic_context_shift_summary.csv` 把时间变化压缩成可以直接写进结论的摘要
-4. 如果想解释某个时间段为什么会变，再回头看 `semantic_period_shortlist.csv`
-5. 如果发现自动分桶不理想，再用 `semantic_bucket_override_template.csv` 做人工修正
-6. `semantic_midterm_notes.md` 可以当这一整包结果的导读
+前四个文件足以建立总体判断；`semantic_period_shortlist.csv` 用于回查某一时间段的具体词项。只有在分桶需要修正、readout 噪声偏高或候选数量明显异常时，才需要继续进入 `03_workbench/`。
 
 ## 语义分桶规则怎么调
 
