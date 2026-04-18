@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import argparse
 import math
+import os
 import re
 import time
 from collections import Counter
@@ -103,6 +104,18 @@ def parse_args() -> argparse.Namespace:
         help="Minimum token length after tokenization.",
     )
     parser.add_argument(
+        "--tokenize_chunk_size",
+        type=int,
+        default=100000,
+        help="Emit tokenization progress after each chunk of this many rows.",
+    )
+    parser.add_argument(
+        "--jieba_parallel_workers",
+        type=int,
+        default=0,
+        help="Enable jieba parallel tokenization with this many workers (0 disables).",
+    )
+    parser.add_argument(
         "--min_doc_freq",
         type=int,
         default=5,
@@ -192,6 +205,37 @@ def tokenize_text(text: str, *, jieba_module, stopwords: set[str], token_min_len
             continue
         tokens.append(candidate)
     return tokens
+
+
+def tokenize_series_with_progress(
+    text_series: pd.Series,
+    *,
+    jieba_module,
+    stopwords: set[str],
+    token_min_length: int,
+    chunk_size: int,
+    emit,
+) -> list[list[str]]:
+    total_rows = len(text_series)
+    resolved_chunk_size = max(int(chunk_size), 1)
+    tokens_by_row: list[list[str]] = []
+
+    for start in range(0, total_rows, resolved_chunk_size):
+        stop = min(start + resolved_chunk_size, total_rows)
+        chunk = text_series.iloc[start:stop]
+        tokens_by_row.extend(
+            chunk.map(
+                lambda text: tokenize_text(
+                    str(text),
+                    jieba_module=jieba_module,
+                    stopwords=stopwords,
+                    token_min_length=token_min_length,
+                )
+            ).tolist()
+        )
+        emit(f"Tokenized {stop}/{total_rows} rows")
+
+    return tokens_by_row
 
 
 def build_reference_doc_freq(token_sets: list[set[str]]) -> Counter[str]:
@@ -340,15 +384,18 @@ def main() -> None:
     tokenize_start = time.perf_counter()
     stopwords = load_stopwords(args.stopwords_path)
     jieba_module = load_tokenizer()
+    if args.jieba_parallel_workers > 0 and os.name != "nt":
+        jieba_module.enable_parallel(args.jieba_parallel_workers)
+        emit(f"Enabled jieba parallel workers={args.jieba_parallel_workers}")
 
     emit("Tokenizing texts")
-    working["tokens"] = working[args.text_col].map(
-        lambda text: tokenize_text(
-            str(text),
-            jieba_module=jieba_module,
-            stopwords=stopwords,
-            token_min_length=args.token_min_length,
-        )
+    working["tokens"] = tokenize_series_with_progress(
+        working[args.text_col],
+        jieba_module=jieba_module,
+        stopwords=stopwords,
+        token_min_length=args.token_min_length,
+        chunk_size=args.tokenize_chunk_size,
+        emit=emit,
     )
     working["token_set"] = working["tokens"].map(lambda tokens: set(tokens))
     emit(f"Tokenization finished in {format_elapsed(tokenize_start)}")

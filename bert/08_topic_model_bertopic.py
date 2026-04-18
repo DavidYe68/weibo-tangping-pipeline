@@ -46,6 +46,8 @@ OUTLIER_REDUCTION_STRATEGIES = (
 )
 TOPIC_TOKEN_RE = re.compile(r"[\u4e00-\u9fffA-Za-z0-9_]+")
 TOPIC_SEGMENT_RE = re.compile(r"[A-Za-z0-9_]+|[\u4e00-\u9fff]+")
+TOPIC_NUMERIC_TOKEN_RE = re.compile(r"^\d+$")
+TOPIC_PAGE_TOKEN_RE = re.compile(r"^p\d+$")
 
 
 class ChineseTopicTokenizer:
@@ -59,6 +61,10 @@ class ChineseTopicTokenizer:
         if not normalized:
             return None
         if normalized in self.stopwords:
+            return None
+        if TOPIC_NUMERIC_TOKEN_RE.fullmatch(normalized):
+            return None
+        if TOPIC_PAGE_TOKEN_RE.fullmatch(normalized):
             return None
         if len(normalized) < self.token_min_length:
             return None

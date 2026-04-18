@@ -19,6 +19,7 @@ from lib.broad_analysis_layout import (
     DRIFT_READOUT_FILES,
     DRIFT_VIZ_FILES,
     READOUTS_DIRNAME,
+    SEMANTIC_READOUT_FILES,
     SEMANTIC_VIZ_FILES,
     TOPIC_MODEL_READOUT_FILES,
     TOPIC_MODEL_VIZ_FILES,
@@ -26,6 +27,7 @@ from lib.broad_analysis_layout import (
     drift_output_paths,
     ensure_canonical_output_from_latest_snapshot,
     latest_snapshot_dir,
+    semantic_readout_path,
     semantic_output_paths,
     sync_all_analysis_output_metadata,
     sync_topic_model_output_metadata,
@@ -333,10 +335,22 @@ def organize_canonical_stage_layouts(artifacts_dir: Path, *, dry_run: bool) -> N
         semantic_paths = semantic_output_paths(semantic_dir)
         relocate_stage_bundle(
             semantic_dir,
+            readout_files=SEMANTIC_READOUT_FILES,
             viz_files=SEMANTIC_VIZ_FILES,
-            directory_moves={"midterm_bundle": semantic_paths["midterm_bundle_dir"]},
             dry_run=dry_run,
         )
+        for name in SEMANTIC_READOUT_FILES:
+            source = semantic_paths["readouts_dir"] / name
+            target = semantic_readout_path(semantic_dir, name)
+            if source.exists() and source != target:
+                move_path(source, target, dry_run=dry_run)
+        legacy_midterm_dir = semantic_paths["readouts_dir"] / "midterm_bundle"
+        if legacy_midterm_dir.is_dir():
+            ensure_dir(semantic_paths["readouts_dir"], dry_run=dry_run)
+            for child in sorted(legacy_midterm_dir.iterdir(), key=lambda item: item.name):
+                move_path(child, semantic_readout_path(semantic_dir, child.name), dry_run=dry_run)
+            if not dry_run and legacy_midterm_dir.exists():
+                legacy_midterm_dir.rmdir()
 
     drift_dir = broad_analysis_dir / CANONICAL_DRIFT_DIR
     if drift_dir.is_dir():

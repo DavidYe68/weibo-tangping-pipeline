@@ -32,6 +32,36 @@ SEMANTIC_VIZ_FILES = (
     "keyword_semantic_neighbors.csv",
     "tokenized_analysis_base.parquet",
 )
+SEMANTIC_READOUT_FILES = (
+    "semantic_bucket_override_template.csv",
+    "semantic_context_bucket_summary.csv",
+    "semantic_context_shift_summary.csv",
+    "semantic_context_trajectory.csv",
+    "semantic_keyword_overview.csv",
+    "semantic_midterm_candidates.csv",
+    "semantic_midterm_coding_template.csv",
+    "semantic_midterm_notes.md",
+    "semantic_midterm_operation_log.md",
+    "semantic_midterm_summary.json",
+    "semantic_noise_diagnostics.csv",
+    "semantic_period_overview.csv",
+    "semantic_period_shortlist.csv",
+)
+SEMANTIC_READOUT_SUBDIRS = {
+    "semantic_midterm_notes.md": "01_start_here",
+    "semantic_keyword_overview.csv": "01_start_here",
+    "semantic_context_trajectory.csv": "01_start_here",
+    "semantic_context_shift_summary.csv": "01_start_here",
+    "semantic_period_shortlist.csv": "02_period_detail",
+    "semantic_period_overview.csv": "02_period_detail",
+    "semantic_context_bucket_summary.csv": "02_period_detail",
+    "semantic_bucket_override_template.csv": "03_workbench",
+    "semantic_midterm_candidates.csv": "03_workbench",
+    "semantic_midterm_coding_template.csv": "03_workbench",
+    "semantic_noise_diagnostics.csv": "03_workbench",
+    "semantic_midterm_summary.json": "99_meta",
+    "semantic_midterm_operation_log.md": "99_meta",
+}
 DRIFT_READOUT_FILES = (
     "keyword_collocation_drift.csv",
     "keyword_neighbor_drift.csv",
@@ -97,8 +127,15 @@ def semantic_output_paths(output_dir: Path) -> dict[str, Path]:
         "cooccurrence_path": viz_inputs_dir / "keyword_cooccurrence.csv",
         "semantic_neighbors_path": viz_inputs_dir / "keyword_semantic_neighbors.csv",
         "tokenized_analysis_base_path": viz_inputs_dir / "tokenized_analysis_base.parquet",
-        "midterm_bundle_dir": readouts_dir / "midterm_bundle",
     }
+
+
+def semantic_readout_path(output_dir: Path, name: str) -> Path:
+    readouts_dir = output_dir if output_dir.name == READOUTS_DIRNAME else semantic_output_paths(output_dir)["readouts_dir"]
+    subdir = SEMANTIC_READOUT_SUBDIRS.get(name)
+    if subdir:
+        return readouts_dir / subdir / name
+    return readouts_dir / name
 
 
 def drift_output_paths(output_dir: Path) -> dict[str, Path]:
@@ -142,7 +179,16 @@ def resolve_semantic_artifact(output_dir: Path, name: str) -> Path:
     if name == "semantic_analysis_summary.json":
         return paths["summary_path"]
     if name == "midterm_bundle":
-        return _existing_or_preferred([paths["midterm_bundle_dir"], output_dir / "midterm_bundle"])
+        return _existing_or_preferred([paths["readouts_dir"], output_dir / "midterm_bundle"])
+    if name in SEMANTIC_READOUT_FILES:
+        return _existing_or_preferred(
+            [
+                semantic_readout_path(output_dir, name),
+                paths["readouts_dir"] / name,
+                paths["readouts_dir"] / "midterm_bundle" / name,
+                output_dir / name,
+            ]
+        )
     if name in SEMANTIC_VIZ_FILES:
         return _existing_or_preferred([paths["viz_inputs_dir"] / name, output_dir / name])
     return output_dir / name
@@ -214,7 +260,10 @@ def sync_semantic_output_metadata(output_dir: Path) -> dict[str, Any]:
             "output_dir": str(output_dir.resolve()),
             "readouts_dir": str(paths["readouts_dir"].resolve()),
             "viz_inputs_dir": str(paths["viz_inputs_dir"].resolve()),
-            "midterm_bundle_dir": str(paths["midterm_bundle_dir"].resolve()),
+            "readout_groups": {
+                name: str(semantic_readout_path(output_dir, name).resolve())
+                for name in SEMANTIC_READOUT_FILES
+            },
             "cooccurrence_path": str(paths["cooccurrence_path"].resolve()),
             "semantic_neighbors_path": str(paths["semantic_neighbors_path"].resolve()),
             "tokenized_analysis_base_path": str(paths["tokenized_analysis_base_path"].resolve()),

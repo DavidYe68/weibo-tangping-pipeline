@@ -16,7 +16,7 @@ from typing import Iterable
 import pandas as pd
 
 from lib.analysis_utils import DEFAULT_ANALYSIS_KEYWORDS, normalize_cli_keywords, save_dataframe
-from lib.broad_analysis_layout import resolve_semantic_artifact, semantic_output_paths
+from lib.broad_analysis_layout import resolve_semantic_artifact, semantic_output_paths, semantic_readout_path
 from lib.io_utils import save_json
 
 DEFAULT_SEMANTIC_DIR = "bert/artifacts/broad_analysis/semantic_analysis"
@@ -107,7 +107,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--output_dir",
         default=None,
-        help="Output directory for the midterm bundle. Defaults to <semantic_dir>/readouts/midterm_bundle.",
+        help="Output directory for the report-ready 09 readouts. Defaults to <semantic_dir>/readouts.",
     )
     parser.add_argument(
         "--keywords",
@@ -133,13 +133,13 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--top_n_all",
         type=int,
-        default=15,
+        default=18,
         help="Top cleaned ALL-period terms to keep per keyword.",
     )
     parser.add_argument(
         "--top_n_period",
         type=int,
-        default=5,
+        default=6,
         help="Top cleaned terms to keep per keyword and period.",
     )
     parser.add_argument(
@@ -312,6 +312,28 @@ def compute_midterm_score(row: pd.Series) -> float:
     return math.log1p(float(row["term_doc_freq"])) * float(row["lift"]) * (1.0 + max(similarity, 0.0))
 
 
+def flag_low_specificity_candidate(
+    row: pd.Series,
+    *,
+    min_term_doc_freq: int = 500,
+    max_lift: float = 1.05,
+) -> bool:
+    """Catch very frequent period terms that are barely more specific than background.
+
+    This is intentionally narrow: it only targets report-facing shortlist noise such as
+    generic verbs/nouns surfacing in a highly homogeneous period, while leaving normal
+    mid-frequency semantic neighbors alone.
+    """
+    try:
+        period_label = str(row.get("period_label", ""))
+        term_doc_freq = float(row.get("term_doc_freq", 0) or 0)
+        lift = float(row.get("lift", 0) or 0)
+    except (TypeError, ValueError):
+        return False
+
+    return period_label != "ALL" and term_doc_freq >= min_term_doc_freq and lift <= max_lift
+
+
 def prepare_candidate_frame(
     cooccurrence_df: pd.DataFrame,
     neighbor_df: pd.DataFrame,
@@ -337,6 +359,7 @@ def prepare_candidate_frame(
     merged["auto_noise_flag"] = merged["auto_drop_reasons"].ne("")
     merged["semantic_supported"] = merged["embedding_similarity"].notna()
     merged["midterm_score"] = merged.apply(compute_midterm_score, axis=1)
+    merged["low_specificity_flag"] = merged.apply(flag_low_specificity_candidate, axis=1)
     merged["auto_keep_for_midterm"] = ~merged["auto_noise_flag"]
     merged["theme_bucket"] = merged["auto_theme_bucket"]
     merged["theme_bucket_source"] = "rule"
@@ -366,6 +389,7 @@ def rank_shortlists(
     per_period = candidates[
         (candidates["period_label"] != "ALL")
         & candidates["auto_keep_for_midterm"]
+        & ~candidates["low_specificity_flag"]
         & (candidates["term_doc_freq"] >= min_doc_freq_period)
     ].copy()
     per_period = per_period.sort_values(
@@ -905,7 +929,7 @@ def render_markdown_summary(
     lines.append(
         f"- 原始候选词行数：{len(candidates)}；自动保留用于中期整理的候选词行数：{int(candidates['auto_keep_for_midterm'].sum())}。"
     )
-    lines.append("- `keyword_cooccurrence.csv` 作为候选词池，`midterm_bundle/` 目录下的表用于阅读、修正和汇报。")
+    lines.append("- `keyword_cooccurrence.csv` 作为候选词池，`readouts/` 目录下的表用于阅读、修正和汇报。")
     lines.append("- 语义簇规则默认来自 `bert/config/semantic_bucket_rules.json`；如果要手工改桶，可以在 `bert/config/semantic_bucket_overrides.csv` 里写覆盖项。")
     lines.append("")
 
@@ -973,7 +997,39 @@ def render_markdown_summary(
     lines.append("- 最后在 `semantic_midterm_coding_template.csv` 里人工勾选保留项，并用 example_text 回原文核对。")
     lines.append("")
 
+    output_path.parent.mkdir(parents=True, exist_ok=True)
     output_path.write_text("\n".join(lines) + "\n", encoding="utf-8")
+
+
+def render_readouts_index(output_dir: Path) -> None:
+    lines = [
+        "# 09 Readouts",
+        "",
+        "这个目录按阅读顺序分了四层，不需要把所有 CSV 都从头读一遍。",
+        "",
+        "## 01_start_here",
+        "- `semantic_midterm_notes.md`：先看这份导读。",
+        "- `semantic_keyword_overview.csv`：先建立每个关键词的总体语义印象。",
+        "- `semantic_context_trajectory.csv`：再看语义簇随时间怎么变化。",
+        "- `semantic_context_shift_summary.csv`：最后用它提炼结论。",
+        "",
+        "## 02_period_detail",
+        "- `semantic_period_shortlist.csv`：解释某个时间段为什么会出现某种语义簇。",
+        "- `semantic_period_overview.csv`：period 级别的汇总表。",
+        "- `semantic_context_bucket_summary.csv`：总体桶分布摘要。",
+        "",
+        "## 03_workbench",
+        "- `semantic_bucket_override_template.csv`：人工改桶候选。",
+        "- `semantic_midterm_candidates.csv`：最全候选大表。",
+        "- `semantic_midterm_coding_template.csv`：人工筛选工作表。",
+        "- `semantic_noise_diagnostics.csv`：看噪声主要来自哪里。",
+        "",
+        "## 99_meta",
+        "- `semantic_midterm_summary.json`：这次运行的统计摘要。",
+        "- `semantic_midterm_operation_log.md`：本轮生成日志。",
+        "",
+    ]
+    (output_dir / "README.md").write_text("\n".join(lines), encoding="utf-8")
 
 
 def main() -> None:
@@ -982,10 +1038,10 @@ def main() -> None:
     if args.output_dir:
         output_dir = Path(args.output_dir)
     else:
-        output_dir = semantic_output_paths(semantic_dir)["midterm_bundle_dir"]
+        output_dir = semantic_output_paths(semantic_dir)["readouts_dir"]
     output_dir.mkdir(parents=True, exist_ok=True)
 
-    logger = OperationLogger(output_dir / "semantic_midterm_operation_log.md")
+    logger = OperationLogger(semantic_readout_path(output_dir, "semantic_midterm_operation_log.md"))
     logger.log(f"Start 09 midterm preparation from {semantic_dir}")
     bucket_rules = load_bucket_rules(args.bucket_rules_path)
     bucket_overrides = load_bucket_overrides(args.bucket_overrides_path)
@@ -1013,7 +1069,7 @@ def main() -> None:
 
     logger.log("Build cleaned candidate table with auto flags, theme buckets, and report score")
     candidates = prepare_candidate_frame(cooccurrence_df, neighbor_df, selected_keywords, exact_noise_terms, bucket_rules)
-    save_dataframe(candidates, output_dir / "semantic_midterm_candidates.csv")
+    save_dataframe(candidates, semantic_readout_path(output_dir, "semantic_midterm_candidates.csv"))
 
     logger.log("Select report-ready shortlists for overall keywords and per-period reading")
     overall_shortlist, period_shortlist = rank_shortlists(
@@ -1078,14 +1134,14 @@ def main() -> None:
     bucket_override_template = build_bucket_override_template(overall_shortlist, period_shortlist)
 
     logger.log("Write report-facing CSV/Markdown/JSON bundle for 09")
-    save_dataframe(overall_shortlist, output_dir / "semantic_keyword_overview.csv")
-    save_dataframe(period_shortlist, output_dir / "semantic_period_shortlist.csv")
-    save_dataframe(period_overview, output_dir / "semantic_period_overview.csv")
-    save_dataframe(context_trajectory, output_dir / "semantic_context_trajectory.csv")
-    save_dataframe(context_shift_summary, output_dir / "semantic_context_shift_summary.csv")
-    save_dataframe(noise_diagnostics, output_dir / "semantic_noise_diagnostics.csv")
-    save_dataframe(coding_template, output_dir / "semantic_midterm_coding_template.csv")
-    save_dataframe(bucket_override_template, output_dir / "semantic_bucket_override_template.csv")
+    save_dataframe(overall_shortlist, semantic_readout_path(output_dir, "semantic_keyword_overview.csv"))
+    save_dataframe(period_shortlist, semantic_readout_path(output_dir, "semantic_period_shortlist.csv"))
+    save_dataframe(period_overview, semantic_readout_path(output_dir, "semantic_period_overview.csv"))
+    save_dataframe(context_trajectory, semantic_readout_path(output_dir, "semantic_context_trajectory.csv"))
+    save_dataframe(context_shift_summary, semantic_readout_path(output_dir, "semantic_context_shift_summary.csv"))
+    save_dataframe(noise_diagnostics, semantic_readout_path(output_dir, "semantic_noise_diagnostics.csv"))
+    save_dataframe(coding_template, semantic_readout_path(output_dir, "semantic_midterm_coding_template.csv"))
+    save_dataframe(bucket_override_template, semantic_readout_path(output_dir, "semantic_bucket_override_template.csv"))
 
     render_markdown_summary(
         candidates=candidates,
@@ -1094,7 +1150,7 @@ def main() -> None:
         context_shift_summary=context_shift_summary,
         noise_diagnostics=noise_diagnostics,
         context_bucket_summary=context_bucket_summary,
-        output_path=output_dir / "semantic_midterm_notes.md",
+        output_path=semantic_readout_path(output_dir, "semantic_midterm_notes.md"),
     )
 
     summary_payload = {
@@ -1116,8 +1172,9 @@ def main() -> None:
         "exact_noise_term_count": int(len(exact_noise_terms)),
         "bucket_override_count": int(len(bucket_overrides)),
     }
-    save_json(output_dir / "semantic_midterm_summary.json", summary_payload)
-    save_dataframe(context_bucket_summary, output_dir / "semantic_context_bucket_summary.csv")
+    save_json(semantic_readout_path(output_dir, "semantic_midterm_summary.json"), summary_payload)
+    save_dataframe(context_bucket_summary, semantic_readout_path(output_dir, "semantic_context_bucket_summary.csv"))
+    render_readouts_index(output_dir)
     logger.log(
         "Finished 09 midterm preparation "
         f"(overall_shortlist={len(overall_shortlist)}, period_shortlist={len(period_shortlist)})"
