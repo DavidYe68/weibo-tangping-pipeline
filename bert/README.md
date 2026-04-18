@@ -39,7 +39,7 @@
 
 下面示例统一按 macOS / Linux 写。Windows 下只要替换解释器路径。
 
-## 这条流程里每个脚本负责什么
+## 这条流程里哪些是入口，哪些是支撑层
 
 ```text
 bert/
@@ -52,18 +52,79 @@ bert/
 ├── 07_build_broad_analysis_base.py
 ├── 08_topic_model_bertopic.py
 ├── 09_keyword_semantic_analysis.py
+├── 09_prepare_semantic_midterm.py
 ├── 10_concept_drift_analysis.py
+├── 08_topic_model_bertopic_当前操作说明.md
+├── config/
 ├── scripts/
 ├── lib/
 ├── data/
 └── artifacts/
 ```
 
-可以粗暴理解成：
+更接近当前代码实际架构的理解方式是：
 
-- `01-03`：准备样本和标签
-- `04-06`：训练模型并打到全量数据
-- `07-10`：把 broad 预测结果变成能读、能讲、能汇报的分析结果
+- `01-10`：真正的阶段入口脚本
+- `09_prepare_semantic_midterm.py`：不是额外研究支线，而是 `09` 结果进入“可读 / 可汇报 / 可人工修正”状态的整理层
+- `config/`：停用词、语义分桶规则、人工覆盖项，属于流程本体的一部分
+- `lib/`：训练、预测、broad-analysis 布局和共享逻辑
+- `scripts/`：合并标注、整理产物、overnight 运行、topic compare 之类的辅助脚本
+- `data/`：抽样表、审核表、示例工作文件
+- `artifacts/`：训练输出和 broad-analysis 输出
+
+一句话说：
+
+- `01-06` 是“从样本到模型”
+- `07-09_prepare` 是“从 broad 预测到可读结果”
+- `10` 是“基于 `08` 和 `09` 结果继续做漂移比较”
+
+## 先分清两层目录：默认工作目录 vs 归档后的 canonical 布局
+
+现在 `bert/` 里最容易让人混淆的，不是脚本顺序，而是“脚本默认写到哪里”和“长期整理后希望它长成什么样”不是一回事。
+
+### 第一层：脚本默认工作目录
+
+不额外传参时，当前代码的默认落盘位置大致是：
+
+- `04_train_bert_classifier.py` -> `bert/artifacts/tangping_bert`
+- `05_train_dual_label_classifier.py` -> `bert/artifacts/dual_label_run`
+- `06_predict_bert_classifier.py` -> `data/processed/text_dedup_predicted`
+- `07` -> `bert/artifacts/broad_analysis/analysis_base.parquet`
+- `08` -> `bert/artifacts/broad_analysis/topic_model_BAAI`
+- `09` -> `bert/artifacts/broad_analysis/semantic_analysis`
+- `10` -> `bert/artifacts/broad_analysis/drift_analysis`
+
+这些路径反映的是“脚本现在怎么工作”，不是最终归档口径。
+
+### 第二层：整理后的 canonical 布局
+
+如果你显式指定输出目录，或者后面跑：
+
+```bash
+.venv/bin/python bert/scripts/organize_artifacts.py
+```
+
+更适合长期保存和回看的结构是：
+
+```text
+bert/artifacts/
+├── runs/
+│   ├── single_label/
+│   └── dual_label/
+└── broad_analysis/
+    ├── topic_model_BAAI/
+    ├── semantic_analysis/
+    ├── drift_analysis/
+    ├── overview/
+    ├── snapshots/
+    └── legacy/
+```
+
+这两层不要混着理解：
+
+- 文档里提到的 `runs/...` 是长期归档口径
+- 脚本帮助信息里的默认值，才是当前无参运行的真实行为
+- 仓库里像 `topic_model_compare/` 这样的目录，属于分析实验或参数比较目录，不是 `08 -> 09 -> 10` 的标准交接目录
 
 ## 推荐的真实工作顺序
 
@@ -78,11 +139,12 @@ bert/
 7. 跑 `07`
 8. 跑 `08`
 9. 跑 `09`
-10. 跑 `10`
+10. 如果你要直接阅读 `09`、做中期整理或准备汇报，再跑 `09_prepare_semantic_midterm.py`
+11. 跑 `10`
 
 如果你的目标只是训练一个分类器，其实跑到 `06` 就可以停。
 
-如果你的目标是做 broad 语义分析，重点就会落在 `07-10`。
+如果你的目标是做 broad 语义分析，重点就会落在 `07-09_prepare + 10`。
 
 ## `bert/data/` 和 `bert/artifacts/` 怎么理解
 
@@ -97,32 +159,28 @@ bert/
 - 人工审核表
 - 合并后的审核表
 
+这里还要分清一件事：
+
+- 脚本默认会生成像 `sample.csv`、`labeled.csv`、`labeled_binary.csv` 这样的工作文件
+- 但仓库里当前保留的示例文件，可能是 `sample_6000.csv` 和若干 `.xlsx`
+
+也就是说：
+
+- “脚本默认文件名”
+- “你当前手上正在审核的文件名”
+
+不一定相同，这不是异常。
+
 ### `bert/artifacts/`
 
-这个目录更像“模型和分析产物仓库”。
+这个目录更像“模型和分析产物仓库”，但它有两种状态：
 
-建议长期保持下面这种结构：
+- 脚本刚跑完时的工作目录状态
+- 经过整理后的 canonical 状态
 
-```text
-bert/artifacts/
-├── runs/
-│   ├── dual_label/
-│   └── single_label/
-└── broad_analysis/
-    ├── topic_model_BAAI/
-    ├── semantic_analysis/
-    ├── drift_analysis/
-    ├── overview/
-    ├── snapshots/
-    └── legacy/
-```
+如果你现在只是想把流程跑通，优先看“脚本默认工作目录”。
 
-为什么这样分：
-
-- `runs/` 放训练 run，便于回看模型、指标和测试集
-- `broad_analysis/` 放分析结果，便于后面做整理、比较和汇报
-- `snapshots/` 放一次性批次，避免当前主结果被冲乱
-- `legacy/` 放历史残留，省得和现在的标准产物混在一起
+如果你现在是在整理长期结果、准备归档或准备给别人接手，再看 `runs/` / `broad_analysis/` 这套 canonical 布局。
 
 仓库里已经带了整理脚本：
 
@@ -259,7 +317,7 @@ cp bert/llm_label_local.example.toml bert/llm_label_local.toml
 ```bash
 .venv/bin/python bert/04_train_bert_classifier.py \
   --input_csv "bert/data/reviewed_a.csv" "bert/data/reviewed_b.csv" \
-  --output_dir "bert/artifacts/runs/single_label/single_label_run"
+  --output_dir "bert/artifacts/tangping_bert"
 ```
 
 如果你想固定一部分测试集，不想让脚本随机切进去：
@@ -269,7 +327,7 @@ cp bert/llm_label_local.example.toml bert/llm_label_local.toml
   --train_csv "bert/data/reviewed_train_extra.csv" \
   --input_csv "bert/data/reviewed_pool_a.csv" "bert/data/reviewed_pool_b.csv" \
   --test_csv "bert/data/reviewed_holdout.csv" \
-  --output_dir "bert/artifacts/runs/single_label/single_label_holdout"
+  --output_dir "bert/artifacts/tangping_bert_holdout"
 ```
 
 怎么理解这些参数：
@@ -278,6 +336,12 @@ cp bert/llm_label_local.example.toml bert/llm_label_local.toml
 - `--train_csv` / `--train_only_csv`：只进训练集
 - `--val_csv`：只进验证集
 - `--test_csv`：只进测试集
+
+这里再强调一次：
+
+- `bert/artifacts/tangping_bert` 是当前脚本默认工作目录
+- 如果你想从一开始就按长期归档结构保存，也可以显式写成 `bert/artifacts/runs/single_label/<run_name>`
+- 但那是你主动指定后的路径，不是脚本默认值
 
 ## 5. 双标签训练：`05_train_dual_label_classifier.py`
 
@@ -293,7 +357,7 @@ cp bert/llm_label_local.example.toml bert/llm_label_local.toml
 ```bash
 .venv/bin/python bert/05_train_dual_label_classifier.py \
   --input_path "bert/data/reviewed_part1.csv" "bert/data/reviewed_part2.csv" \
-  --base_output_dir "bert/artifacts/runs/dual_label/dual_label_run"
+  --base_output_dir "bert/artifacts/dual_label_run"
 ```
 
 如果你想固定留一份测试集：
@@ -303,7 +367,7 @@ cp bert/llm_label_local.example.toml bert/llm_label_local.toml
   --input_path "bert/data/reviewed_pool_a.csv" "bert/data/reviewed_pool_b.csv" \
   --train_path "bert/data/reviewed_manual_boost.csv" \
   --test_path "bert/data/reviewed_external_test.csv" \
-  --base_output_dir "bert/artifacts/runs/dual_label/dual_label_holdout"
+  --base_output_dir "bert/artifacts/dual_label_holdout"
 ```
 
 怎么理解这些 split 参数：
@@ -323,6 +387,16 @@ cp bert/llm_label_local.example.toml bert/llm_label_local.toml
 - 最终总数据集比例会变
 
 这是正常现象。
+
+结构上要注意：
+
+- `05` 不是 `04` 的下一步
+- 它是另一条训练分支
+- 真实分叉是：单标签走 `03 -> 04 -> 06`，双标签走“已审核表 -> 05 -> 取其中的 broad 或 strict 模型去跑 06”
+
+如果你想按长期归档布局保存双标签结果，可以显式写成：
+
+- `bert/artifacts/runs/dual_label/<run_name>`
 
 ## 文本列和标签列怎么识别
 
@@ -414,11 +488,20 @@ cp bert/llm_label_local.example.toml bert/llm_label_local.toml
 
 ```bash
 .venv/bin/python bert/06_predict_bert_classifier.py \
-  --model_dir "bert/artifacts/runs/dual_label/dual_label_run/broad/best_model" \
+  --model_dir "bert/artifacts/dual_label_run/broad/best_model" \
   --input_pattern "data/processed/text_dedup/*.parquet" \
   --output_dir "data/processed/text_dedup_predicted_broad" \
   --device cuda
 ```
+
+如果你不显式传 `--output_dir`：
+
+- `06` 默认会写到 `data/processed/text_dedup_predicted`
+- `07` 默认却是从 `data/processed/text_dedup_predicted_broad/*.parquet` 继续读
+
+所以：
+
+- 想直接接上 `07`，就不要省这一个参数
 
 常见输出列包括：
 
@@ -430,7 +513,7 @@ cp bert/llm_label_local.example.toml bert/llm_label_local.toml
 
 如果你只是想保留正样本，也可以看脚本的 `--only_positive` 参数。
 
-## 进入 `07-10` 之前，先确认这三件事
+## 进入 `07-09_prepare + 10` 之前，先确认这三件事
 
 1. 主流程已经产出 `data/processed/text_dedup/*.parquet`
 2. 训练数据是人工复核过的
@@ -477,6 +560,23 @@ cp bert/llm_label_local.example.toml bert/llm_label_local.toml
 
 - `bert/artifacts/broad_analysis/analysis_base.parquet`
 - `bert/artifacts/broad_analysis/analysis_base_report.json`
+
+从架构上说，`07` 是 broad-analysis 的真正分叉点。
+
+它后面不是简单的：
+
+- `07 -> 08 -> 09 -> 10`
+
+而是：
+
+- `07 -> 08`
+- `07 -> 09`
+- `08 + 09 -> 10`
+
+也就是说：
+
+- `08` 和 `09` 都直接吃 `analysis_base.parquet`
+- `10` 才是第一次同时依赖 `08` 和 `09` 结果的步骤
 
 ## 8. 主题建模：`08_topic_model_bertopic.py`
 
@@ -694,6 +794,13 @@ cp bert/llm_label_local.example.toml bert/llm_label_local.toml
   --semantic_dir "bert/artifacts/broad_analysis/semantic_analysis"
 ```
 
+这里最好把两件事分开记：
+
+- `09_keyword_semantic_analysis.py`：生成机器侧的 `viz_inputs/`
+- `09_prepare_semantic_midterm.py`：把 09 结果整理成真正给人读的 `readouts/`
+
+如果你只跑前者，不跑后者，`09` 这一段其实还没进入最适合阅读的状态。
+
 ### 主脚本输出
 
 `09_keyword_semantic_analysis.py` 的直接产物位于 `bert/artifacts/broad_analysis/semantic_analysis/`：
@@ -847,13 +954,18 @@ cp bert/llm_label_local.example.toml bert/llm_label_local.toml
 2. `topic_drift_by_keyword.csv`
 3. `keyword_neighbor_drift.csv`
 
-## `07-10` 的输出目录怎么放
+## `07-09_prepare + 10` 的输出目录怎么放
 
 当前建议固定成这一套：
 
 - `08` 的主结果放 `bert/artifacts/broad_analysis/topic_model_BAAI/`
 - `09` 的主结果放 `bert/artifacts/broad_analysis/semantic_analysis/`
 - `10` 的主结果放 `bert/artifacts/broad_analysis/drift_analysis/`
+
+补一句实际情况：
+
+- 仓库里如果同时出现 `topic_model_compare/`，那通常表示参数比较或实验目录
+- 它不是 `10` 默认读取的 canonical `08` 输出目录
 
 每个目录内部再统一分两层：
 

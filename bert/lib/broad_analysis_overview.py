@@ -341,9 +341,9 @@ def _write_readme(root: Path, manifest: dict[str, Any]) -> Path:
             "",
             "## Canonical Outputs",
             f"- `analysis_base.parquet` / `analysis_base_report.json`: 分析底表和样本规模说明。",
-            f"- `{manifest['topic_model'].get('path_label', CANONICAL_TOPIC_MODEL_DIR)}`: BERTopic 主结果。",
-            f"- `{manifest['semantic'].get('path_label', CANONICAL_SEMANTIC_DIR)}`: 语义搭配分析主结果。",
-            f"- `{manifest['drift'].get('path_label', CANONICAL_DRIFT_DIR)}`: 概念漂移主结果。",
+            f"- `{manifest['topic_model'].get('path_label') or CANONICAL_TOPIC_MODEL_DIR}`: BERTopic 主结果。",
+            f"- `{manifest['semantic'].get('path_label') or CANONICAL_SEMANTIC_DIR}`: 语义搭配分析主结果。",
+            f"- `{manifest['drift'].get('path_label') or CANONICAL_DRIFT_DIR}`: 概念漂移主结果。",
         ]
     )
 
@@ -355,7 +355,7 @@ def _write_readme(root: Path, manifest: dict[str, Any]) -> Path:
         if len(snapshots) > 12:
             lines.append(f"- 其余 {len(snapshots) - 12} 个快照已省略，详见 `overview/manifest.json`。")
     else:
-        lines.append("- 当前没有额外快照目录；如果需要旧快照，请看 `../_unused/`。")
+        lines.append("- 当前没有额外快照目录；如果需要旧结果，请看 `legacy/`。")
 
     lines.extend(
         [
@@ -363,7 +363,7 @@ def _write_readme(root: Path, manifest: dict[str, Any]) -> Path:
             "## Notes",
             "- `overview/` 只放入口和浓缩表，不替代原始明细。",
             "- `topic_model_BAAI/`、`semantic_analysis/`、`drift_analysis/` 内部按 `readouts/` 和 `viz_inputs/` 分层：前者给人直接看，后者给程序或可视化调用。",
-            "- 当前主目录只保留正在使用的分析结果；旧版结果和训练产物统一放在 `../_unused/`。",
+            "- 旧版或实验性 broad-analysis 结果统一放在 `legacy/` 或 `snapshots/`，不要和当前 canonical 输出混着读。",
         ]
     )
     readme_path.write_text("\n".join(lines) + "\n", encoding="utf-8")
