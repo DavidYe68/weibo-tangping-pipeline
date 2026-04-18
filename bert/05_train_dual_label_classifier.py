@@ -6,7 +6,7 @@ from typing import Any, Dict, List
 
 import pandas as pd
 
-from lib.collection_utils import load_text_collection_frame
+from lib.collection_utils import drop_rows_overlapping_with_reference, load_text_collection_frame
 from lib.data_utils import drop_optional_training_metadata
 from lib.io_utils import save_json
 from lib.labels import normalize_label_value
@@ -276,6 +276,26 @@ def prepare_shared_dataset(args: argparse.Namespace, base_output_dir: Path) -> t
         for split_name, paths in groups.items()
     }
     pool_df = concat_frames(prepared_frames["pool"])
+    explicit_df = concat_frames(
+        [
+            frame
+            for split_name in ("train", "val", "test")
+            for frame in prepared_frames[split_name]
+        ]
+    )
+    pool_overlap_removed = 0
+    overlap_signature_columns: list[str] = []
+    if not pool_df.empty and not explicit_df.empty:
+        pool_df, pool_overlap_removed, overlap_signature_columns = drop_rows_overlapping_with_reference(
+            pool_df,
+            explicit_df,
+        )
+        if pool_overlap_removed:
+            emit(
+                "Removed "
+                f"{pool_overlap_removed} pooled rows that overlap with explicit train/val/test inputs "
+                f"using signature columns={overlap_signature_columns}"
+            )
 
     pool_split_frames: Dict[str, pd.DataFrame] = {}
     split_strategy = "predefined_only"
@@ -336,6 +356,8 @@ def prepare_shared_dataset(args: argparse.Namespace, base_output_dir: Path) -> t
         "rows": int(len(shared_df)),
         "split_sizes": split_sizes,
         "source_breakdown": source_breakdown,
+        "pool_overlap_removed": pool_overlap_removed,
+        "overlap_signature_columns": overlap_signature_columns,
         "input_groups": {name: [str(path.resolve()) for path in paths] for name, paths in groups.items()},
     }
     save_json(shared_dir / "shared_split_manifest.json", split_manifest)

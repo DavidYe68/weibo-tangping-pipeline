@@ -255,6 +255,7 @@ def sync_semantic_output_metadata(output_dir: Path) -> dict[str, Any]:
         return {}
 
     summary = _safe_read_json(summary_path)
+    summary.pop("midterm_bundle_dir", None)
     summary.update(
         {
             "output_dir": str(output_dir.resolve()),

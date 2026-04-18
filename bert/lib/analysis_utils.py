@@ -93,9 +93,9 @@ def normalize_cli_keywords(values: Sequence[str] | None) -> list[str]:
     raw_values = list(values) if values else list(DEFAULT_ANALYSIS_KEYWORDS)
     resolved: list[str] = []
     for value in raw_values:
-        canonical = canonicalize_keyword(value, DEFAULT_ANALYSIS_KEYWORDS)
-        if canonical and canonical not in resolved:
-            resolved.append(canonical)
+        normalized = normalize_keyword_text(value)
+        if normalized and normalized not in resolved:
+            resolved.append(normalized)
     if not resolved:
         raise ValueError("No usable keywords were provided.")
     return resolved
@@ -157,8 +157,9 @@ def normalize_ip_text(value: object) -> str | None:
 
 
 def build_keyword_mask(series: pd.Series, allowed_keywords: Sequence[str]) -> pd.Series:
-    allowed = set(normalize_cli_keywords(allowed_keywords))
-    normalized = series.map(lambda value: canonicalize_keyword(value, DEFAULT_ANALYSIS_KEYWORDS))
+    resolved_keywords = normalize_cli_keywords(allowed_keywords)
+    allowed = set(resolved_keywords)
+    normalized = series.map(lambda value: canonicalize_keyword(value, resolved_keywords))
     return normalized.isin(allowed)
 
 
@@ -334,6 +335,7 @@ def prepare_analysis_frame(
     min_confidence: Optional[float],
 ) -> tuple[pd.DataFrame, dict[str, object]]:
     working = df.copy()
+    resolved_keywords = normalize_cli_keywords(keywords)
 
     resolved_text_col = detect_text_column(working, text_col, source_name="analysis input")
     resolved_keyword_col = detect_keyword_column(working, keyword_col)
@@ -345,9 +347,9 @@ def prepare_analysis_frame(
     working["analysis_text"] = working[resolved_text_col].fillna("").astype("string").str.strip()
     working["keyword_raw"] = working[resolved_keyword_col].astype("string")
     working["keyword_normalized"] = working["keyword_raw"].map(
-        lambda value: canonicalize_keyword(value, DEFAULT_ANALYSIS_KEYWORDS)
+        lambda value: canonicalize_keyword(value, resolved_keywords)
     )
-    working["keyword_in_scope"] = working["keyword_normalized"].isin(set(normalize_cli_keywords(keywords)))
+    working["keyword_in_scope"] = working["keyword_normalized"].isin(set(resolved_keywords))
 
     if positive_label_col not in working.columns:
         raise ValueError(f"Prediction label column '{positive_label_col}' not found.")

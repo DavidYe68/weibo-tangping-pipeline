@@ -16,13 +16,28 @@ from typing import Iterable
 import pandas as pd
 
 from lib.analysis_utils import DEFAULT_ANALYSIS_KEYWORDS, normalize_cli_keywords, save_dataframe
-from lib.broad_analysis_layout import resolve_semantic_artifact, semantic_output_paths, semantic_readout_path
+from lib.broad_analysis_layout import (
+    resolve_semantic_artifact,
+    semantic_output_paths,
+    semantic_readout_path,
+    sync_semantic_output_metadata,
+)
+from lib.broad_analysis_overview import refresh_broad_analysis_overview
 from lib.io_utils import save_json
 
 DEFAULT_SEMANTIC_DIR = "bert/artifacts/broad_analysis/semantic_analysis"
 DEFAULT_NOISE_TERMS_PATH = "bert/config/semantic_midterm_noise_terms.txt"
 DEFAULT_BUCKET_RULES_PATH = "bert/config/semantic_bucket_rules.json"
 DEFAULT_BUCKET_OVERRIDES_PATH = "bert/config/semantic_bucket_overrides.csv"
+TOKENIZED_BASE_COLUMNS = (
+    "keyword_normalized",
+    "period_label",
+    "analysis_text",
+    "tokens",
+    "点赞数",
+    "评论数",
+    "转发数",
+)
 PURE_ASCII_TERM_RE = re.compile(r"^[A-Za-z0-9._-]+$")
 HAS_ASCII_RE = re.compile(r"[A-Za-z]")
 HAS_DIGIT_RE = re.compile(r"\d")
@@ -668,7 +683,13 @@ def build_example_lookup(
         f"for {len(requested_rows)} shortlisted term rows"
     )
     scan_start = time.perf_counter()
-    for row in tokenized_base.itertuples(index=False, name=None):
+    missing_columns = [column for column in TOKENIZED_BASE_COLUMNS if column not in tokenized_base.columns]
+    if missing_columns:
+        raise ValueError(
+            "tokenized_analysis_base.parquet is missing required columns for 09_prepare: "
+            + ", ".join(missing_columns)
+        )
+    for row in tokenized_base.loc[:, TOKENIZED_BASE_COLUMNS].itertuples(index=False, name=None):
         keyword = str(row[0])
         period_label = str(row[1])
         text = row[2]
@@ -1093,18 +1114,7 @@ def main() -> None:
 
     tokenized_path = resolve_tokenized_analysis_base_path(summary, semantic_dir)
     logger.log(f"Load tokenized analysis base from {tokenized_path}")
-    tokenized_base = pd.read_parquet(
-        tokenized_path,
-        columns=[
-            "keyword_normalized",
-            "period_label",
-            "analysis_text",
-            "tokens",
-            "点赞数",
-            "评论数",
-            "转发数",
-        ],
-    )
+    tokenized_base = pd.read_parquet(tokenized_path, columns=list(TOKENIZED_BASE_COLUMNS))
 
     requested_rows = pd.concat([overall_candidates, period_context_candidates, period_shortlist], ignore_index=True)
     requested_rows = requested_rows.drop_duplicates(subset=["keyword", "period_label", "term"]).reset_index(drop=True)
@@ -1180,6 +1190,12 @@ def main() -> None:
         f"(overall_shortlist={len(overall_shortlist)}, period_shortlist={len(period_shortlist)})"
     )
     logger.save()
+    sync_semantic_output_metadata(semantic_dir)
+    try:
+        refresh_broad_analysis_overview(semantic_dir)
+    except Exception as exc:
+        logger.log(f"Skipped broad-analysis overview refresh after 09_prepare: {exc}")
+        logger.save()
 
 
 if __name__ == "__main__":

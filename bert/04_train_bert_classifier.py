@@ -6,7 +6,7 @@ from typing import Any, Dict, List
 
 import pandas as pd
 
-from lib.collection_utils import load_text_collection_frame
+from lib.collection_utils import drop_rows_overlapping_with_reference, load_text_collection_frame
 from lib.data_utils import drop_optional_training_metadata
 from lib.io_utils import save_json
 from lib.labels import detect_label_column, normalize_label_value
@@ -171,6 +171,26 @@ def prepare_collection_dataset(args: argparse.Namespace, output_dir: Path) -> tu
     using_explicit_splits = any(prepared_frames[name] for name in ("train", "val", "test"))
 
     pool_df = concat_frames(prepared_frames["pool"])
+    explicit_df = concat_frames(
+        [
+            frame
+            for split_name in ("train", "val", "test")
+            for frame in prepared_frames[split_name]
+        ]
+    )
+    pool_overlap_removed = 0
+    overlap_signature_columns: List[str] = []
+    if using_explicit_splits and not pool_df.empty and not explicit_df.empty:
+        pool_df, pool_overlap_removed, overlap_signature_columns = drop_rows_overlapping_with_reference(
+            pool_df,
+            explicit_df,
+        )
+        if pool_overlap_removed:
+            emit(
+                "Removed "
+                f"{pool_overlap_removed} pooled rows that overlap with explicit train/val/test inputs "
+                f"using signature columns={overlap_signature_columns}"
+            )
     split_strategy: str | None = None
     if using_explicit_splits and not pool_df.empty:
         train_df, val_df, test_df = create_data_splits(
@@ -223,6 +243,8 @@ def prepare_collection_dataset(args: argparse.Namespace, output_dir: Path) -> tu
             "split_strategy": split_strategy or "predefined_only",
             "split_sizes": split_sizes,
             "source_breakdown": source_breakdown,
+            "pool_overlap_removed": pool_overlap_removed,
+            "overlap_signature_columns": overlap_signature_columns,
             "input_groups": {name: [str(path.resolve()) for path in paths] for name, paths in groups.items()},
         }
         save_json(output_dir / "prepared_split_manifest.json", manifest)

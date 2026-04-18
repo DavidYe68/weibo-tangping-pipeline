@@ -468,13 +468,25 @@ def remove_visualization_outputs(artifacts_dir: Path, *, dry_run: bool) -> None:
 
 def write_layout_summary(artifacts_dir: Path, *, dry_run: bool) -> None:
     summary_path = artifacts_dir / "ARTIFACT_LAYOUT.md"
+    broad_analysis_dir = artifacts_dir / "broad_analysis"
+    topic_model_dir = broad_analysis_dir / CANONICAL_TOPIC_MODEL_DIR
+    topic_compare_dir = broad_analysis_dir / "topic_model_compare"
     content = "\n".join(
         [
             "# Artifact Layout",
             "",
             "- `broad_analysis/README.md`: start-here guide for broad-analysis outputs.",
             "- `broad_analysis/overview/`: condensed tables and the generated manifest.",
-            "- `broad_analysis/topic_model_BAAI/`: canonical BERTopic outputs (`readouts/` for direct reading, `viz_inputs/` for programmatic inputs, `checkpoints/` kept in place).",
+            (
+                "- `broad_analysis/topic_model_BAAI/`: canonical BERTopic outputs (`readouts/` for direct reading, `viz_inputs/` for programmatic inputs, `checkpoints/` kept in place)."
+                if topic_model_dir.is_dir()
+                else "- `broad_analysis/topic_model_BAAI/`: canonical BERTopic outputs when a preferred 08 run has been promoted."
+            ),
+            (
+                "- `broad_analysis/topic_model_compare/`: 08 的参数比较、review 记录和人工 merge 结果。"
+                if topic_compare_dir.is_dir()
+                else "- `broad_analysis/topic_model_compare/`: 08 的参数比较目录。"
+            ),
             "- `broad_analysis/semantic_analysis/`: canonical 09 semantic-analysis outputs (`readouts/` + `viz_inputs/`).",
             "- `broad_analysis/drift_analysis/`: canonical 10 drift-analysis outputs (`readouts/` + `viz_inputs/`).",
             "- `broad_analysis/snapshots/`: dated or one-off analysis snapshots.",

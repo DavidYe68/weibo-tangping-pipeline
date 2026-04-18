@@ -872,6 +872,40 @@ def is_nonempty_value(value: Any) -> bool:
     return str(value).strip() != ""
 
 
+RESUME_OUTPUT_COLUMNS = {
+    "tangping_related_label",
+    "tangping_related",
+    "exclusion_type",
+    "confidence",
+    "llm_reason",
+    "llm_raw",
+    "llm_fixed_raw",
+}
+
+
+def _normalize_resume_identity_value(value: Any) -> str:
+    if isinstance(value, (list, tuple, set)):
+        return "|".join(str(item) for item in value)
+    if isinstance(value, dict):
+        return json.dumps(value, ensure_ascii=False, sort_keys=True, default=str)
+    if value is None or pd.isna(value):
+        return ""
+    return str(value)
+
+
+def _resolve_resume_identity_columns(input_df: pd.DataFrame, resume_df: pd.DataFrame) -> List[str]:
+    return [
+        column
+        for column in input_df.columns
+        if column in resume_df.columns and column not in RESUME_OUTPUT_COLUMNS
+    ]
+
+
+def _build_resume_row_signatures(df: pd.DataFrame, columns: List[str]) -> pd.Series:
+    normalized = df.loc[:, columns].map(_normalize_resume_identity_value)
+    return pd.util.hash_pandas_object(normalized, index=False)
+
+
 def parse_resume_result(row: pd.Series, save_raw: bool, save_fixed_raw: bool) -> Optional[Dict[str, Any]]:
     label = normalize_label(row.get("tangping_related_label"))
     conf = normalize_confidence(row.get("confidence"))
@@ -1214,12 +1248,19 @@ def load_resume_results(
         )
         return results
 
-    if "id" in df.columns and "id" in resume_df.columns:
-        input_ids = df["id"].astype(str).fillna("")
-        resume_ids = resume_df["id"].astype(str).fillna("")
-        if not input_ids.equals(resume_ids):
-            logger.warning("stage=resume_scan output=%s found=1 usable=0 reason=id_mismatch", output_path)
-            return results
+    identity_columns = _resolve_resume_identity_columns(df, resume_df)
+    if not identity_columns:
+        logger.warning("stage=resume_scan output=%s found=1 usable=0 reason=no_identity_columns", output_path)
+        return results
+    input_signatures = _build_resume_row_signatures(df, identity_columns)
+    resume_signatures = _build_resume_row_signatures(resume_df, identity_columns)
+    if not input_signatures.equals(resume_signatures):
+        logger.warning(
+            "stage=resume_scan output=%s found=1 usable=0 reason=row_signature_mismatch identity_cols=%s",
+            output_path,
+            ",".join(identity_columns),
+        )
+        return results
 
     resumed = 0
     for i, row in resume_df.iterrows():

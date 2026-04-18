@@ -341,11 +341,22 @@ def _write_readme(root: Path, manifest: dict[str, Any]) -> Path:
             "",
             "## Canonical Outputs",
             f"- `analysis_base.parquet` / `analysis_base_report.json`: 分析底表和样本规模说明。",
-            f"- `{manifest['topic_model'].get('path_label') or CANONICAL_TOPIC_MODEL_DIR}`: BERTopic 主结果。",
-            f"- `{manifest['semantic'].get('path_label') or CANONICAL_SEMANTIC_DIR}`: 语义搭配分析主结果。",
-            f"- `{manifest['drift'].get('path_label') or CANONICAL_DRIFT_DIR}`: 概念漂移主结果。",
         ]
     )
+    topic_label = manifest["topic_model"].get("path_label")
+    if topic_label:
+        lines.append(f"- `{topic_label}`: BERTopic 主结果。")
+    elif (root / "topic_model_compare").is_dir():
+        lines.append(
+            f"- `{CANONICAL_TOPIC_MODEL_DIR}`: canonical BERTopic 目录；当前缺失，现有 08 参数实验结果在 `topic_model_compare/`。"
+        )
+    else:
+        lines.append(f"- `{CANONICAL_TOPIC_MODEL_DIR}`: canonical BERTopic 目录；当前还没有可用主结果。")
+
+    semantic_label = manifest["semantic"].get("path_label") or CANONICAL_SEMANTIC_DIR
+    drift_label = manifest["drift"].get("path_label") or CANONICAL_DRIFT_DIR
+    lines.append(f"- `{semantic_label}`: 语义搭配分析主结果。")
+    lines.append(f"- `{drift_label}`: 概念漂移主结果。")
 
     snapshots = manifest.get("snapshots", [])
     lines.extend(["", "## Snapshots"])
@@ -362,7 +373,11 @@ def _write_readme(root: Path, manifest: dict[str, Any]) -> Path:
             "",
             "## Notes",
             "- `overview/` 只放入口和浓缩表，不替代原始明细。",
-            "- `topic_model_BAAI/`、`semantic_analysis/`、`drift_analysis/` 内部按 `readouts/` 和 `viz_inputs/` 分层：前者给人直接看，后者给程序或可视化调用。",
+            (
+                "- `topic_model_BAAI/`、`semantic_analysis/`、`drift_analysis/` 内部按 `readouts/` 和 `viz_inputs/` 分层：前者给人直接看，后者给程序或可视化调用。"
+                if (root / CANONICAL_TOPIC_MODEL_DIR).is_dir()
+                else "- 当前没有 canonical `topic_model_BAAI/`；如果你在看 08 的实验对比，请直接读 `topic_model_compare/`。"
+            ),
             "- 旧版或实验性 broad-analysis 结果统一放在 `legacy/` 或 `snapshots/`，不要和当前 canonical 输出混着读。",
         ]
     )

@@ -29,6 +29,9 @@ from lib.io_utils import save_json
 DEFAULT_STOPWORDS_PATH = "bert/config/topic_stopwords.txt"
 DEFAULT_EMBEDDING_MODEL = "BAAI/bge-small-zh-v1.5"
 TOKEN_RE = re.compile(r"[\u4e00-\u9fffA-Za-z0-9_]+")
+TOKEN_SEGMENT_RE = re.compile(r"[A-Za-z0-9_]+|[\u4e00-\u9fff]+")
+TOKEN_NUMERIC_RE = re.compile(r"^\d+$")
+TOKEN_PAGE_RE = re.compile(r"^p\d+$")
 
 
 def format_elapsed(start_time: float) -> str:
@@ -162,11 +165,60 @@ def load_stopwords(path: str | None) -> set[str]:
     return set(load_term_list(path))
 
 
-def load_tokenizer():
+def normalize_token(candidate: str, *, stopwords: set[str], token_min_length: int) -> str | None:
+    normalized = candidate.strip().lower()
+    if not normalized:
+        return None
+    if normalized in stopwords:
+        return None
+    if TOKEN_NUMERIC_RE.fullmatch(normalized):
+        return None
+    if TOKEN_PAGE_RE.fullmatch(normalized):
+        return None
+    if len(normalized) < token_min_length:
+        return None
+    if not TOKEN_RE.fullmatch(normalized):
+        return None
+    return normalized
+
+
+def fallback_tokenize(text: str, *, stopwords: set[str], token_min_length: int) -> list[str]:
+    tokens: list[str] = []
+    for chunk in TOKEN_SEGMENT_RE.findall(text):
+        if not chunk:
+            continue
+        if chunk.isascii() or len(chunk) <= 4:
+            normalized = normalize_token(chunk, stopwords=stopwords, token_min_length=token_min_length)
+            if normalized:
+                tokens.append(normalized)
+            continue
+        for index in range(len(chunk) - 1):
+            normalized = normalize_token(
+                chunk[index : index + 2],
+                stopwords=stopwords,
+                token_min_length=token_min_length,
+            )
+            if normalized:
+                tokens.append(normalized)
+    return tokens
+
+
+class FallbackTokenizer:
+    def lcut(self, text: str, cut_all: bool = False) -> list[str]:
+        del cut_all
+        return TOKEN_SEGMENT_RE.findall(text)
+
+
+def load_tokenizer(*, emit=None):
     try:
         import jieba
-    except ImportError as exc:
-        raise ImportError(missing_dependency_message("jieba")) from exc
+    except ImportError:
+        if emit is not None:
+            emit(
+                "jieba is not installed in the current environment; "
+                "falling back to a regex tokenizer for semantic analysis."
+            )
+        return FallbackTokenizer()
     return jieba
 
 
@@ -192,18 +244,13 @@ def load_sentence_encoder(args: argparse.Namespace, *, emit):
 
 
 def tokenize_text(text: str, *, jieba_module, stopwords: set[str], token_min_length: int) -> list[str]:
+    if isinstance(jieba_module, FallbackTokenizer):
+        return fallback_tokenize(text, stopwords=stopwords, token_min_length=token_min_length)
     tokens: list[str] = []
     for token in jieba_module.lcut(text, cut_all=False):
-        candidate = token.strip().lower()
-        if not candidate:
-            continue
-        if candidate in stopwords:
-            continue
-        if len(candidate) < token_min_length:
-            continue
-        if not TOKEN_RE.fullmatch(candidate):
-            continue
-        tokens.append(candidate)
+        candidate = normalize_token(token, stopwords=stopwords, token_min_length=token_min_length)
+        if candidate:
+            tokens.append(candidate)
     return tokens
 
 
@@ -383,8 +430,8 @@ def main() -> None:
 
     tokenize_start = time.perf_counter()
     stopwords = load_stopwords(args.stopwords_path)
-    jieba_module = load_tokenizer()
-    if args.jieba_parallel_workers > 0 and os.name != "nt":
+    jieba_module = load_tokenizer(emit=emit)
+    if args.jieba_parallel_workers > 0 and os.name != "nt" and hasattr(jieba_module, "enable_parallel"):
         jieba_module.enable_parallel(args.jieba_parallel_workers)
         emit(f"Enabled jieba parallel workers={args.jieba_parallel_workers}")
 
