@@ -616,11 +616,13 @@ cp bert/llm_label_local.example.toml bert/llm_label_local.toml
   --min_topic_size 300 \
   --hdbscan_min_samples 60 \
   --umap_n_neighbors 80 \
-  --nr_topics 12 \
   --outlier_reduction_strategy c-tf-idf+distributions \
   --outlier_reduction_threshold 0.05 \
   --resume
 ```
+
+这里的意思是先把原始聚类和 outlier 回填做稳，再看是否需要额外压主题数。
+对于 broad 语料，不建议一上来就固定压到很小的 `nr_topics`。
 
 常见输出：
 
@@ -993,19 +995,18 @@ cp bert/llm_label_local.example.toml bert/llm_label_local.toml
 - `--min_topic_size 300`
 - `--hdbscan_min_samples 50~100`
 - `--umap_n_neighbors 50~100`
-- `--nr_topics 8~15`
+- 先不设 `--nr_topics`，先看原始聚类质量
 
-如果你一上来就强行把主题压到很少，结果反而可能更难解释。
+如果你一上来就强行把主题压到很少，结果反而可能更难解释，甚至把多个语义场硬并到一个大 topic 里。
 
 ## 什么时候该扩停用词表
 
 如果你发现这些东西反复跑进 topic 头部，通常就该考虑扩停用词了：
 
-- 粉圈词
-- 游戏词
-- 二手交易词
-- 编号和纯数字
-- 节日和问候语
+- 平台口头禅和连接词
+- 编号、页码、纯数字
+- 节日问候和模板短句
+- 明显的平台活动词或运营词
 
 对应文件通常是：
 
@@ -1013,7 +1014,9 @@ cp bert/llm_label_local.example.toml bert/llm_label_local.toml
 
 ## `07 -> 08` 之间要不要加规则过滤
 
-如果你的研究重点是“躺平 / 摆烂 / 佛系”的社会语义，而不是交易黑话、抽卡帖或游戏流量帖，那确实值得考虑在 `07` 和 `08` 之间加一层轻过滤。
+如果你的研究设计明确不想研究某些语义场，比如交易帖、抽卡帖或特定垂类社区内容，那可以在 `07` 和 `08` 之间加一层轻过滤。
+
+但如果你跑的是 broad 口径，就不要默认把游戏、饭圈、股票这类内容当噪声删掉；它们往往本身就是 broad 语义扩散的一部分。
 
 例如：
 

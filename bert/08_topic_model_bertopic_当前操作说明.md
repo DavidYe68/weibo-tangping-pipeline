@@ -34,12 +34,15 @@
 
 `bert/artifacts/broad_analysis/analysis_base.parquet`
 
-这个表通常至少要有下面这些列：
+这个表必须至少有下面这些列：
 
 - `analysis_text`：要做主题建模的文本
 - `keyword_normalized`：规范化后的关键词，比如 `躺平` / `摆烂` / `佛系`
 - `publish_time`：时间列
-- `ip_col` 对应的原始地区列，或者能被自动识别的地区列
+
+IP 列不是硬性必需项。
+
+如果有原始地区列，脚本会尝试自动识别并规范化；如果没有，脚本也能继续跑，只是会把全部记录统一标成缺失 IP。
 
 脚本默认参数里，对应关系是：
 
@@ -187,7 +190,7 @@
 - 文本列
 - 关键词列
 - 时间列
-- `ip_normalized`（如果有）
+- `ip_normalized`
 
 这个 fingerprint 会写进：
 
@@ -211,7 +214,7 @@
 
 执行逻辑是：
 
-1. 如果 `--resume` 开着、embedding checkpoint 存在、指纹也一致  
+1. 如果 `--resume` 开着、embedding checkpoint 存在、指纹一致、而且 checkpoint 记录的 embedding 模型也和当前请求一致  
    -> 直接加载 `document_embeddings.npy`
 2. 否则  
    -> 用 sentence-transformers 重新编码全部文本
@@ -755,4 +758,3 @@ embedding 之后，脚本还会单独对降维做 checkpoint。
 - 这轮切出了什么主题
 - 每个主题大概是什么
 - 它们在什么时候更强
-
