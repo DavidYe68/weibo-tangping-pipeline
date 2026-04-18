@@ -796,12 +796,12 @@ cp bert/llm_label_local.example.toml bert/llm_label_local.toml
   --semantic_dir "bert/artifacts/broad_analysis/semantic_analysis"
 ```
 
-这里最好把两件事分开记：
+这一部分分成两个脚本：
 
-- `09_keyword_semantic_analysis.py`：生成机器侧的 `viz_inputs/`
-- `09_prepare_semantic_midterm.py`：把 09 结果整理成真正给人读的 `readouts/`
+- `09_keyword_semantic_analysis.py` 负责生成机器侧的 `viz_inputs/`
+- `09_prepare_semantic_midterm.py` 负责将 09 结果整理成用于阅读、复核和汇报的 `readouts/`
 
-如果你只跑前者，不跑后者，`09` 这一段其实还没进入最适合阅读的状态。
+只运行前者时，09 的结果仍停留在程序输入层；用于阅读和修正的表需要在整理脚本运行后才会完整生成。
 
 ### 主脚本输出
 

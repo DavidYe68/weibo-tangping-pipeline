@@ -954,20 +954,18 @@ def render_markdown_summary(
     lines.append("- 语义簇规则默认来自 `bert/config/semantic_bucket_rules.json`；如果要手工改桶，可以在 `bert/config/semantic_bucket_overrides.csv` 里写覆盖项。")
     lines.append("")
 
-    lines.append("## 09 的读取方式")
-    lines.append("- 先看 `semantic_keyword_overview.csv`：确认每个关键词的代表词、代表文本和最终分桶。")
-    lines.append("- 再看 `semantic_context_trajectory.csv`：观察每个语义簇在不同时间段的强弱变化。")
-    lines.append("- 然后看 `semantic_context_shift_summary.csv`：提炼“持续时间、峰值时间、最新占比”这类结论。")
-    lines.append("- `semantic_period_shortlist.csv` 和 `semantic_period_overview.csv` 用来解释某个时间段为什么会出现某种语义簇。")
-    lines.append("- `semantic_bucket_override_template.csv` 和 `bert/config/semantic_bucket_overrides.csv` 用来做人工修正。")
+    lines.append("## 文件结构")
+    lines.append("- `01_start_here/`：总体 shortlist、轨迹表、变化摘要和导读。")
+    lines.append("- `02_period_detail/`：分期 shortlist 和 period 级汇总。")
+    lines.append("- `03_workbench/`：候选总表、噪声诊断和人工改桶模板。")
+    lines.append("- `99_meta/`：运行摘要和生成日志。")
     lines.append("")
 
-    lines.append("## 09 的原理")
-    lines.append("- 先为每个关键词在每个时间段生成一批临近词候选。")
-    lines.append("- 再为这些候选词回查代表文本。")
-    lines.append("- 根据代表文本中的 marker，把候选词归入 `context_bucket` 和 `theme_bucket`。")
-    lines.append("- 最后按 `keyword + period + context_bucket` 聚合，观察语义簇在时间上的强弱变化。")
-    lines.append("- 如果自动分桶不理想，可以用人工覆盖表修正最终分桶。")
+    lines.append("## 生成逻辑")
+    lines.append("- `keyword_cooccurrence.csv` 提供候选词池，`keyword_semantic_neighbors.csv` 提供语义邻居支持。")
+    lines.append("- 整理阶段会回查 `tokenized_analysis_base.parquet`，补充代表文本、命中统计和文本重复度。")
+    lines.append("- 自动分桶规则来自 `bert/config/semantic_bucket_rules.json`，人工覆盖来自 `bert/config/semantic_bucket_overrides.csv`。")
+    lines.append("- 最终结果会分为总体 shortlist、分期 shortlist、语义轨迹、变化摘要和人工修正工作表。")
     lines.append("")
 
     if not noise_diagnostics.empty:
@@ -1008,14 +1006,13 @@ def render_markdown_summary(
             lines.append(f"- `{keyword}`: {' / '.join(parts)}")
     lines.append("")
 
-    lines.append("## 怎么讲 09")
-    lines.append("- 先讲 `semantic_keyword_overview.csv`：用它命名每个关键词的代表语义簇和代表用法。")
-    lines.append(
-        "- 再讲 `semantic_context_trajectory.csv` 和 `semantic_context_shift_summary.csv`：关注语义簇在时间上的扩张、收缩和迁移。"
-    )
-    lines.append("- `semantic_period_shortlist.csv` 和 `semantic_period_overview.csv` 作为回查入口，用来解释某段时间为什么会出现某种语义簇。")
-    lines.append("- 如果自动分桶不理想，先看 `semantic_bucket_override_template.csv`，把需要修正的行复制到 `bert/config/semantic_bucket_overrides.csv` 后重跑。")
-    lines.append("- 最后在 `semantic_midterm_coding_template.csv` 里人工勾选保留项，并用 example_text 回原文核对。")
+    lines.append("## 建议阅读顺序")
+    lines.append("- `01_start_here/semantic_midterm_notes.md`")
+    lines.append("- `01_start_here/semantic_keyword_overview.csv`")
+    lines.append("- `01_start_here/semantic_context_trajectory.csv`")
+    lines.append("- `01_start_here/semantic_context_shift_summary.csv`")
+    lines.append("- `02_period_detail/semantic_period_shortlist.csv`")
+    lines.append("- `03_workbench/semantic_bucket_override_template.csv` 和 `03_workbench/semantic_noise_diagnostics.csv` 仅在需要人工修正时继续查看。")
     lines.append("")
 
     output_path.parent.mkdir(parents=True, exist_ok=True)
@@ -1026,16 +1023,16 @@ def render_readouts_index(output_dir: Path) -> None:
     lines = [
         "# 09 Readouts",
         "",
-        "这个目录按阅读顺序分了四层，不需要把所有 CSV 都从头读一遍。",
+        "09 的整理结果分为四组：总体阅读、分期细表、人工修正工作台和运行元信息。",
         "",
         "## 01_start_here",
-        "- `semantic_midterm_notes.md`：先看这份导读。",
-        "- `semantic_keyword_overview.csv`：先建立每个关键词的总体语义印象。",
-        "- `semantic_context_trajectory.csv`：再看语义簇随时间怎么变化。",
-        "- `semantic_context_shift_summary.csv`：最后用它提炼结论。",
+        "- `semantic_midterm_notes.md`：本轮整理的简要摘要。",
+        "- `semantic_keyword_overview.csv`：总体 shortlist。",
+        "- `semantic_context_trajectory.csv`：语义桶的时间轨迹。",
+        "- `semantic_context_shift_summary.csv`：轨迹摘要。",
         "",
         "## 02_period_detail",
-        "- `semantic_period_shortlist.csv`：解释某个时间段为什么会出现某种语义簇。",
+        "- `semantic_period_shortlist.csv`：分期 shortlist。",
         "- `semantic_period_overview.csv`：period 级别的汇总表。",
         "- `semantic_context_bucket_summary.csv`：总体桶分布摘要。",
         "",
@@ -1043,7 +1040,7 @@ def render_readouts_index(output_dir: Path) -> None:
         "- `semantic_bucket_override_template.csv`：人工改桶候选。",
         "- `semantic_midterm_candidates.csv`：最全候选大表。",
         "- `semantic_midterm_coding_template.csv`：人工筛选工作表。",
-        "- `semantic_noise_diagnostics.csv`：看噪声主要来自哪里。",
+        "- `semantic_noise_diagnostics.csv`：噪声来源统计。",
         "",
         "## 99_meta",
         "- `semantic_midterm_summary.json`：这次运行的统计摘要。",
